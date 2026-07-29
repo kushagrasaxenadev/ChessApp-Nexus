@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1785356134617,
+      "tag": "0000_workable_silver_samurai",
+      "breakpoints": true
+    }
+  ]
+}
