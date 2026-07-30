@@ -90,10 +90,10 @@ export const BOT_PROFILES = [
 ] as const;
 
 export const DIFFICULTIES = [
-  { id: 1, label: "Rookie", rating: "400–650", depth: "Random" },
-  { id: 2, label: "Casual", rating: "700–1000", depth: "Tactical" },
-  { id: 3, label: "Club", rating: "1100–1450", depth: "1 ply" },
-  { id: 4, label: "Expert", rating: "1500–1850", depth: "2 ply" },
+  { id: 1, label: "Rookie", rating: "400-650", depth: "Random" },
+  { id: 2, label: "Casual", rating: "700-1000", depth: "Tactical" },
+  { id: 3, label: "Club", rating: "1100-1450", depth: "1 ply" },
+  { id: 4, label: "Expert", rating: "1500-1850", depth: "2 ply" },
   { id: 5, label: "Master", rating: "1900+", depth: "Precise" },
 ] as const;
 
@@ -104,17 +104,41 @@ export const THEMES = [
   { id: "ember", name: "Ember", colors: ["#ffb45b", "#795542"] },
 ] as const;
 
+export const BOARD_THEMES = [
+  { id: "forest", name: "Forest", light: "#d4d9c5", dark: "#596556" },
+  { id: "walnut", name: "Walnut", light: "#e2c49f", dark: "#8b5b3f" },
+  { id: "ocean", name: "Ocean", light: "#c8dce7", dark: "#3d6d88" },
+  { id: "marble", name: "Marble", light: "#e8e9e4", dark: "#7b858b" },
+  { id: "candy", name: "Candy", light: "#f1cfdf", dark: "#a85d82" },
+  { id: "graphite", name: "Graphite", light: "#b9bec1", dark: "#40484d" },
+] as const;
+
+export const PIECE_SETS = [
+  { id: "classic", name: "Classic", preview: "♞♛" },
+  { id: "bold", name: "Bold", preview: "♟♛" },
+  { id: "letters", name: "Monogram", preview: "NQ" },
+  { id: "glass", name: "Glass", preview: "♞♛" },
+] as const;
+
 export const TIME_CONTROLS = [
-  { id: "blitz", label: "3 + 2", base: 180, increment: 2 },
-  { id: "rapid", label: "5 + 0", base: 300, increment: 0 },
-  { id: "focus", label: "10 + 5", base: 600, increment: 5 },
+  { id: "bullet_1_0", label: "1 + 0", category: "Bullet", base: 60, increment: 0 },
+  { id: "bullet_1_1", label: "1 + 1", category: "Bullet", base: 60, increment: 1 },
+  { id: "blitz_3_0", label: "3 + 0", category: "Blitz", base: 180, increment: 0 },
+  { id: "blitz_3_2", label: "3 + 2", category: "Blitz", base: 180, increment: 2 },
+  { id: "rapid_5_0", label: "5 + 0", category: "Rapid", base: 300, increment: 0 },
+  { id: "rapid_10_0", label: "10 + 0", category: "Rapid", base: 600, increment: 0 },
+  { id: "rapid_10_5", label: "10 + 5", category: "Rapid", base: 600, increment: 5 },
+  { id: "classical_15_10", label: "15 + 10", category: "Classical", base: 900, increment: 10 },
 ] as const;
 
 export type BotProfile = (typeof BOT_PROFILES)[number];
 export type BotId = BotProfile["id"];
 export type Difficulty = (typeof DIFFICULTIES)[number]["id"];
 export type ThemeId = (typeof THEMES)[number]["id"];
+export type BoardThemeId = (typeof BOARD_THEMES)[number]["id"];
+export type PieceSetId = (typeof PIECE_SETS)[number]["id"];
 export type TimeControlId = (typeof TIME_CONTROLS)[number]["id"];
+export type PlayerColor = "w" | "b";
 
 function materialScore(game: Chess) {
   return game
@@ -127,16 +151,17 @@ function materialScore(game: Chess) {
     }, 0);
 }
 
-function blackPositionScore(game: Chess) {
-  if (game.isCheckmate()) return game.turn() === "w" ? 100_000 : -100_000;
+function positionScore(game: Chess, botColor: PlayerColor) {
+  if (game.isCheckmate()) return game.turn() === botColor ? -100_000 : 100_000;
   if (game.isDraw()) return 0;
 
-  let score = -materialScore(game) * 10;
+  const perspective = botColor === "w" ? 1 : -1;
+  let score = materialScore(game) * perspective * 10;
   for (const square of ["d4", "e4", "d5", "e5"] as Square[]) {
     const piece = game.get(square);
-    if (piece) score += piece.color === "b" ? 0.9 : -0.9;
+    if (piece) score += piece.color === botColor ? 0.9 : -0.9;
   }
-  if (game.isCheck()) score += game.turn() === "w" ? 1.6 : -1.6;
+  if (game.isCheck()) score += game.turn() === botColor ? -1.6 : 1.6;
   return score;
 }
 
@@ -144,6 +169,7 @@ export function chooseBotMove(
   game: Chess,
   difficulty: Difficulty,
   bot: BotProfile,
+  botColor: PlayerColor = game.turn(),
 ): Move | null {
   const moves = game.moves({ verbose: true });
   if (!moves.length) return null;
@@ -162,7 +188,7 @@ export function chooseBotMove(
       Math.abs(3.5 - FILES.indexOf(move.to[0] as (typeof FILES)[number])) +
       Math.abs(4.5 - Number(move.to[1]));
     let score =
-      blackPositionScore(next) +
+      positionScore(next, botColor) +
       captureValue * 3.2 * bot.captureBias +
       (move.san.includes("+") ? 2.4 * bot.checkBias : 0) +
       (4 - centerDistance) * 0.34 * bot.centerBias +
@@ -177,7 +203,7 @@ export function chooseBotMove(
           to: reply.to,
           promotion: reply.promotion ?? "q",
         });
-        worstReply = Math.min(worstReply, blackPositionScore(replyPosition));
+        worstReply = Math.min(worstReply, positionScore(replyPosition, botColor));
       }
       if (Number.isFinite(worstReply)) score = score * 0.36 + worstReply * 0.64;
     }

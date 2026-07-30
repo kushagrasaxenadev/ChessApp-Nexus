@@ -36,6 +36,10 @@ test("server-renders the NEXUS product foundation", async () => {
   assert.match(html, /BOT ARENA/i);
   assert.match(html, /Five minds\. Five different problems\./i);
   assert.match(html, /Difficulty level/i);
+  assert.match(html, /Board palette/i);
+  assert.match(html, /Piece set/i);
+  assert.match(html, /Play as/i);
+  assert.match(html, /Bullet/i);
   assert.match(html, /Foundation map/i);
   assert.match(html, /Rules core/i);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
@@ -52,4 +56,6 @@ test("exposes a machine-readable health contract", async () => {
   const health = await response.json();
   assert.equal(health.status, "ok");
   assert.equal(health.capabilities.rules, "ready");
+  assert.equal(health.capabilities.bots, "ready");
+  assert.equal(health.capabilities.timeControls, "ready");
 });

@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Clock3,
   Crown,
+  Flag,
   FlipVertical2,
   Gauge,
   Globe2,
@@ -20,6 +21,7 @@ import {
   Search,
   Settings2,
   ShieldCheck,
+  Shuffle,
   Sparkles,
   Swords,
   TimerReset,
@@ -30,20 +32,25 @@ import {
 import { Chess, type Square } from "chess.js";
 import { useEffect, useMemo, useState } from "react";
 import {
+  BOARD_THEMES,
   BOT_PROFILES,
   DIFFICULTIES,
+  PIECE_SETS,
   THEMES,
   TIME_CONTROLS,
   chooseBotMove,
+  type BoardThemeId,
   type BotId,
   type Difficulty,
+  type PieceSetId,
+  type PlayerColor,
   type ThemeId,
   type TimeControlId,
 } from "../lib/chess/bots";
 
 const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"] as const;
 
-const PIECES: Record<string, string> = {
+const CLASSIC_PIECES: Record<string, string> = {
   wp: "♙",
   wn: "♘",
   wb: "♗",
@@ -56,6 +63,43 @@ const PIECES: Record<string, string> = {
   br: "♜",
   bq: "♛",
   bk: "♚",
+};
+
+const BOLD_PIECES: Record<string, string> = {
+  wp: "♟",
+  wn: "♞",
+  wb: "♝",
+  wr: "♜",
+  wq: "♛",
+  wk: "♚",
+  bp: "♟",
+  bn: "♞",
+  bb: "♝",
+  br: "♜",
+  bq: "♛",
+  bk: "♚",
+};
+
+const LETTER_PIECES: Record<string, string> = {
+  wp: "P",
+  wn: "N",
+  wb: "B",
+  wr: "R",
+  wq: "Q",
+  wk: "K",
+  bp: "P",
+  bn: "N",
+  bb: "B",
+  br: "R",
+  bq: "Q",
+  bk: "K",
+};
+
+const PIECE_SYMBOLS: Record<PieceSetId, Record<string, string>> = {
+  classic: CLASSIC_PIECES,
+  bold: BOLD_PIECES,
+  letters: LETTER_PIECES,
+  glass: BOLD_PIECES,
 };
 
 const NAV_ITEMS = [
@@ -81,6 +125,13 @@ for (let rank = 8; rank >= 1; rank -= 1) {
 }
 
 type PanelId = "bots" | "analysis" | "moves" | "coach";
+type SideChoice = "white" | "black" | "random";
+
+const SIDE_OPTIONS: Array<{ id: SideChoice; label: string; hint: string }> = [
+  { id: "white", label: "White", hint: "You move first" },
+  { id: "random", label: "Random", hint: "Surprise side" },
+  { id: "black", label: "Black", hint: "Bot moves first" },
+];
 
 function cloneGame(game: Chess) {
   const next = new Chess();
@@ -100,15 +151,38 @@ function materialScore(game: Chess) {
     }, 0);
 }
 
-function gameStatus(game: Chess, whiteClock: number, blackClock: number) {
-  if (whiteClock <= 0) return "Black wins on time";
-  if (blackClock <= 0) return "White wins on time";
-  if (game.isCheckmate()) {
-    return game.turn() === "w" ? "Black wins by checkmate" : "White wins by checkmate";
+function winnerColor(
+  game: Chess,
+  whiteClock: number,
+  blackClock: number,
+): PlayerColor | null {
+  if (whiteClock <= 0) return "b";
+  if (blackClock <= 0) return "w";
+  if (game.isCheckmate()) return game.turn() === "w" ? "b" : "w";
+  return null;
+}
+
+function gameStatus(
+  game: Chess,
+  whiteClock: number,
+  blackClock: number,
+  playerColor: PlayerColor,
+  botName: string,
+  manualResult: string | null,
+) {
+  if (manualResult) return manualResult;
+  const winner = winnerColor(game, whiteClock, blackClock);
+  if (winner) {
+    const byTime = whiteClock <= 0 || blackClock <= 0;
+    return winner === playerColor
+      ? "You win" + (byTime ? " on time" : " by checkmate")
+      : botName + " wins" + (byTime ? " on time" : " by checkmate");
   }
   if (game.isDraw()) return "Draw";
-  if (game.isCheck()) return game.turn() === "w" ? "White is in check" : "Black is in check";
-  return game.turn() === "w" ? "Your move" : "Bot is thinking";
+  if (game.isCheck()) {
+    return game.turn() === playerColor ? "Your king is in check" : botName + " is in check";
+  }
+  return game.turn() === playerColor ? "Your move" : botName + " is thinking";
 }
 
 function formatClock(seconds: number) {
@@ -120,20 +194,26 @@ function formatClock(seconds: number) {
   );
 }
 
-function resultTitle(game: Chess, whiteClock: number, blackClock: number) {
-  if (whiteClock <= 0) return "Time expired";
-  if (blackClock <= 0) return "Bot flagged";
-  if (game.isCheckmate()) return "Checkmate";
+function resultTitle(
+  game: Chess,
+  whiteClock: number,
+  blackClock: number,
+  playerColor: PlayerColor,
+  manualResult: string | null,
+) {
+  if (manualResult) return "Game resigned";
   if (game.isDraw()) return "Game drawn";
+  const winner = winnerColor(game, whiteClock, blackClock);
+  if (winner) return winner === playerColor ? "Victory" : "Defeat";
   return "Game complete";
 }
 
 function openingName(history: string[]) {
   const line = history.slice(0, 6).join(" ");
-  if (line.startsWith("e4 e5 Nf3 Nc6 Bb5")) return "Ruy López";
+  if (line.startsWith("e4 e5 Nf3 Nc6 Bb5")) return "Ruy Lopez";
   if (line.startsWith("e4 c5")) return "Sicilian Defense";
   if (line.startsWith("d4 d5 c4")) return "Queen's Gambit";
-  if (line.startsWith("Nf3")) return "Réti Opening";
+  if (line.startsWith("Nf3")) return "Reti Opening";
   return history.length ? "Opening explorer" : "Starting position";
 }
 
@@ -149,23 +229,34 @@ export function ChessStudio() {
   const [selectedBotId, setSelectedBotId] = useState<BotId>("atlas");
   const [difficulty, setDifficulty] = useState<Difficulty>(3);
   const [theme, setTheme] = useState<ThemeId>("nexus");
-  const [timeControlId, setTimeControlId] = useState<TimeControlId>("rapid");
+  const [boardTheme, setBoardTheme] = useState<BoardThemeId>("forest");
+  const [pieceSet, setPieceSet] = useState<PieceSetId>("classic");
+  const [timeControlId, setTimeControlId] =
+    useState<TimeControlId>("blitz_3_2");
+  const [sideChoice, setSideChoice] = useState<SideChoice>("white");
+  const [playerColor, setPlayerColor] = useState<PlayerColor>("w");
+  const [manualResult, setManualResult] = useState<string | null>(null);
   const [themeOpen, setThemeOpen] = useState(false);
   const [flipped, setFlipped] = useState(false);
   const [clockStarted, setClockStarted] = useState(false);
-  const [whiteClock, setWhiteClock] = useState(300);
-  const [blackClock, setBlackClock] = useState(300);
+  const [whiteClock, setWhiteClock] = useState(180);
+  const [blackClock, setBlackClock] = useState(180);
 
   const selectedBot =
     BOT_PROFILES.find((bot) => bot.id === selectedBotId) ?? BOT_PROFILES[2];
   const activeTime =
     TIME_CONTROLS.find((control) => control.id === timeControlId) ??
-    TIME_CONTROLS[1];
+    TIME_CONTROLS[3];
+  const botColor: PlayerColor = playerColor === "w" ? "b" : "w";
+  const pieceSymbols = PIECE_SYMBOLS[pieceSet];
   const history = game.history();
   const verboseHistory = game.history({ verbose: true });
   const timedOut = whiteClock <= 0 || blackClock <= 0;
-  const gameEnded = game.isGameOver() || timedOut;
-  const botThinking = game.turn() === "b" && !gameEnded;
+  const gameEnded = game.isGameOver() || timedOut || manualResult !== null;
+  const botThinking =
+    clockStarted && game.turn() === botColor && !gameEnded;
+  const playerClock = playerColor === "w" ? whiteClock : blackClock;
+  const botClock = botColor === "w" ? whiteClock : blackClock;
   const displaySquares = useMemo(
     () => (flipped ? [...BASE_SQUARES].reverse() : BASE_SQUARES),
     [flipped],
@@ -192,11 +283,11 @@ export function ChessStudio() {
     return rows;
   }, [history]);
 
-  const capturedByWhite = verboseHistory.filter(
-    (move) => move.color === "w" && move.captured,
+  const capturedByPlayer = verboseHistory.filter(
+    (move) => move.color === playerColor && move.captured,
   );
-  const capturedByBlack = verboseHistory.filter(
-    (move) => move.color === "b" && move.captured,
+  const capturedByBot = verboseHistory.filter(
+    (move) => move.color === botColor && move.captured,
   );
   const evaluation = materialScore(game);
   const whiteShare = Math.max(16, Math.min(84, 50 + evaluation * 7));
@@ -215,13 +306,11 @@ export function ChessStudio() {
   }, [clockStarted, game, gameEnded]);
 
   useEffect(() => {
-    if (game.turn() !== "b" || gameEnded) {
-      return;
-    }
-    const delay = Math.max(320, selectedBot.delay - difficulty * 65);
+    if (!clockStarted || game.turn() !== botColor || gameEnded) return;
+    const delay = Math.max(220, selectedBot.delay - difficulty * 75);
     const timer = window.setTimeout(() => {
       const nextGame = cloneGame(game);
-      const choice = chooseBotMove(nextGame, difficulty, selectedBot);
+      const choice = chooseBotMove(nextGame, difficulty, selectedBot, botColor);
       if (choice) {
         const played = nextGame.move({
           from: choice.from,
@@ -230,21 +319,37 @@ export function ChessStudio() {
         });
         setGame(nextGame);
         setLastMove({ from: played.from, to: played.to });
-        setBlackClock((value) => value + activeTime.increment);
+        if (botColor === "w") {
+          setWhiteClock((value) => value + activeTime.increment);
+        } else {
+          setBlackClock((value) => value + activeTime.increment);
+        }
       }
     }, delay);
     return () => window.clearTimeout(timer);
-  }, [activeTime.increment, difficulty, game, gameEnded, selectedBot]);
+  }, [
+    activeTime.increment,
+    botColor,
+    clockStarted,
+    difficulty,
+    game,
+    gameEnded,
+    selectedBot,
+  ]);
 
   function handleSquareClick(square: Square) {
-    if (gameEnded || botThinking || game.turn() !== "w") return;
+    if (gameEnded || botThinking || game.turn() !== playerColor) return;
     if (selected && legalTargets.includes(square)) {
       const next = cloneGame(game);
       const move = next.move({ from: selected, to: square, promotion: "q" });
       if (move) {
         setGame(next);
         setLastMove({ from: selected, to: square });
-        setWhiteClock((value) => value + activeTime.increment);
+        if (playerColor === "w") {
+          setWhiteClock((value) => value + activeTime.increment);
+        } else {
+          setBlackClock((value) => value + activeTime.increment);
+        }
         setClockStarted(true);
       }
       setSelected(null);
@@ -252,7 +357,7 @@ export function ChessStudio() {
     }
 
     const piece = game.get(square);
-    if (piece && piece.color === game.turn()) {
+    if (piece && piece.color === playerColor) {
       setSelected(square);
       return;
     }
@@ -265,10 +370,13 @@ export function ChessStudio() {
     const nextGame = cloneGame(game);
     const undone = nextGame.undo();
     if (!undone) return;
-    if (nextGame.turn() === "b" && nextGame.history().length) nextGame.undo();
+    if (nextGame.turn() === botColor && nextGame.history().length) {
+      nextGame.undo();
+    }
     setGame(nextGame);
     setSelected(null);
     setLastMove(null);
+    setManualResult(null);
     setClockStarted(false);
   }
 
@@ -277,24 +385,41 @@ export function ChessStudio() {
     setSelected(null);
     setLastMove(null);
     setQueueOpen(false);
+    setManualResult(null);
     setWhiteClock(activeTime.base);
     setBlackClock(activeTime.base);
     setClockStarted(startClock);
   }
 
   function startBotGame(botId: BotId = selectedBotId) {
+    const nextColor: PlayerColor =
+      sideChoice === "random"
+        ? Math.random() > 0.5
+          ? "w"
+          : "b"
+        : sideChoice === "white"
+          ? "w"
+          : "b";
+
     setSelectedBotId(botId);
     setPanel("analysis");
+    setPlayerColor(nextColor);
+    setFlipped(nextColor === "b");
     setGame(new Chess());
     setSelected(null);
     setLastMove(null);
+    setManualResult(null);
     setWhiteClock(activeTime.base);
     setBlackClock(activeTime.base);
     setClockStarted(true);
   }
 
+  function resignGame() {
+    if (!clockStarted || gameEnded) return;
+    setManualResult("You resigned. " + selectedBot.name + " wins.");
+  }
   return (
-    <div className="app-shell" data-theme={theme}>
+    <div className="app-shell" data-theme={theme} data-board={boardTheme} data-pieces={pieceSet}>
       <aside className="side-rail" aria-label="Primary navigation">
         <a className="brand-mark" href="#" aria-label="NEXUS home">
           <Crown size={25} strokeWidth={2.4} />
@@ -339,7 +464,7 @@ export function ChessStudio() {
 
           <div className="topbar-status">
             <span className="live-dot" />
-            <span>Bot arena online</span>
+            <span>{activeTime.category} arena · {activeTime.label}</span>
           </div>
 
           <div className="topbar-actions">
@@ -354,30 +479,70 @@ export function ChessStudio() {
                 <Palette size={18} />
               </button>
               {themeOpen && (
-                <div className="theme-popover">
+                <div className="theme-popover appearance-popover">
                   <div className="popover-heading">
-                    <span><Palette size={16} /><b>Visual theme</b></span>
-                    <small>Applies instantly</small>
+                    <span><Palette size={16} /><b>Appearance studio</b></span>
+                    <small>Live preview</small>
                   </div>
-                  <div className="theme-options">
-                    {THEMES.map((option) => (
-                      <button
-                        type="button"
-                        className={theme === option.id ? "active" : ""}
-                        key={option.id}
-                        onClick={() => {
-                          setTheme(option.id);
-                          setThemeOpen(false);
-                        }}
-                      >
-                        <span className="theme-swatches">
-                          <i style={{ background: option.colors[0] }} />
-                          <i style={{ background: option.colors[1] }} />
-                        </span>
-                        <span>{option.name}</span>
-                        {theme === option.id && <b>ACTIVE</b>}
-                      </button>
-                    ))}
+
+                  <div className="appearance-section">
+                    <span className="appearance-label">INTERFACE THEME</span>
+                    <div className="theme-options">
+                      {THEMES.map((option) => (
+                        <button
+                          type="button"
+                          className={theme === option.id ? "active" : ""}
+                          key={option.id}
+                          onClick={() => setTheme(option.id)}
+                        >
+                          <span className="theme-swatches">
+                            <i style={{ background: option.colors[0] }} />
+                            <i style={{ background: option.colors[1] }} />
+                          </span>
+                          <span>{option.name}</span>
+                          {theme === option.id && <b>ON</b>}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="appearance-section">
+                    <span className="appearance-label">BOARD PALETTE</span>
+                    <div className="board-theme-options">
+                      {BOARD_THEMES.map((option) => (
+                        <button
+                          type="button"
+                          className={boardTheme === option.id ? "active" : ""}
+                          key={option.id}
+                          onClick={() => setBoardTheme(option.id)}
+                        >
+                          <span className="board-swatch">
+                            <i style={{ background: option.light }} />
+                            <i style={{ background: option.dark }} />
+                            <i style={{ background: option.dark }} />
+                            <i style={{ background: option.light }} />
+                          </span>
+                          <small>{option.name}</small>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="appearance-section">
+                    <span className="appearance-label">PIECE SET</span>
+                    <div className="piece-set-options">
+                      {PIECE_SETS.map((option) => (
+                        <button
+                          type="button"
+                          className={pieceSet === option.id ? "active" : ""}
+                          key={option.id}
+                          onClick={() => setPieceSet(option.id)}
+                        >
+                          <b>{option.preview}</b>
+                          <small>{option.name}</small>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}
@@ -408,7 +573,7 @@ export function ChessStudio() {
               </div>
               <div className="game-presence">
                 <Globe2 size={17} />
-                <span>{selectedBot.name} · {selectedBot.style}</span>
+                <span>{selectedBot.name} · {activeTime.category} {activeTime.label}</span>
                 <b>LOCAL ENGINE · 0 ms</b>
               </div>
             </div>
@@ -423,21 +588,21 @@ export function ChessStudio() {
                     <span>
                       <b>{selectedBot.name} <em className="cpu-badge">BOT</em></b>
                       <small>
-                        {selectedBot.rating} · {selectedBot.style}
+                        {selectedBot.rating} · {botColor === "w" ? "White" : "Black"} · {selectedBot.style}
                         {botThinking && <span className="thinking-dots"><i /><i /><i /></span>}
                       </small>
                     </span>
                   </div>
                   <div className="captured-line" aria-label="Pieces captured by bot">
-                    {capturedByBlack.map((move, index) => (
+                    {capturedByBot.map((move, index) => (
                       <span key={move.san + String(index)}>
-                        {PIECES["w" + String(move.captured)]}
+                        {pieceSymbols[playerColor + String(move.captured)]}
                       </span>
                     ))}
                   </div>
-                  <div className={["player-clock", game.turn() === "b" && !gameEnded ? "active-clock clock-running" : ""].join(" ")}>
+                  <div className={["player-clock", game.turn() === botColor && !gameEnded ? "active-clock clock-running" : "", botClock <= 30 && botClock > 0 ? "low-time" : ""].join(" ")}>
                     <Clock3 size={16} />
-                    <span>{formatClock(blackClock)}</span>
+                    <span>{formatClock(botClock)}</span>
                   </div>
                 </div>
 
@@ -488,7 +653,7 @@ export function ChessStudio() {
                           )}
                           {piece && (
                             <span className={["piece", piece.color === "w" ? "white-piece" : "black-piece"].join(" ")}>
-                              {PIECES[piece.color + piece.type]}
+                              {pieceSymbols[piece.color + piece.type]}
                             </span>
                           )}
                         </button>
@@ -499,8 +664,8 @@ export function ChessStudio() {
                     <div className="board-result">
                       <span><Crown size={22} /></span>
                       <small>GAME COMPLETE</small>
-                      <h2>{resultTitle(game, whiteClock, blackClock)}</h2>
-                      <p>{gameStatus(game, whiteClock, blackClock)}</p>
+                      <h2>{resultTitle(game, whiteClock, blackClock, playerColor, manualResult)}</h2>
+                      <p>{gameStatus(game, whiteClock, blackClock, playerColor, selectedBot.name, manualResult)}</p>
                       <button type="button" onClick={() => startBotGame()}>
                         <RotateCcw size={16} /> Rematch {selectedBot.name}
                       </button>
@@ -513,26 +678,26 @@ export function ChessStudio() {
                     <span className="avatar avatar-self">K</span>
                     <span>
                       <b>KnightPilot <em>YOU</em></b>
-                      <small>1,684 · White</small>
+                      <small>1,684 · {playerColor === "w" ? "White" : "Black"}</small>
                     </span>
                   </div>
                   <div className="captured-line captured-dark" aria-label="Pieces captured by you">
-                    {capturedByWhite.map((move, index) => (
+                    {capturedByPlayer.map((move, index) => (
                       <span key={move.san + String(index)}>
-                        {PIECES["b" + String(move.captured)]}
+                        {pieceSymbols[botColor + String(move.captured)]}
                       </span>
                     ))}
                   </div>
-                  <div className={["player-clock", game.turn() === "w" && !gameEnded ? "active-clock" : "", game.turn() === "w" && clockStarted ? "clock-running" : ""].join(" ")}>
+                  <div className={["player-clock", game.turn() === playerColor && !gameEnded ? "active-clock" : "", game.turn() === playerColor && clockStarted ? "clock-running" : "", playerClock <= 30 && playerClock > 0 ? "low-time" : ""].join(" ")}>
                     <Clock3 size={16} />
-                    <span>{formatClock(whiteClock)}</span>
+                    <span>{formatClock(playerClock)}</span>
                   </div>
                 </div>
 
                 <div className="board-actions">
                   <span className="turn-status">
                     <span className={["status-pip", botThinking ? "thinking" : ""].join(" ")} />
-                    {gameStatus(game, whiteClock, blackClock)}
+                    {gameStatus(game, whiteClock, blackClock, playerColor, selectedBot.name, manualResult)}
                   </span>
                   <div>
                     <button className="small-action" type="button" onClick={() => setFlipped(!flipped)}>
@@ -548,6 +713,9 @@ export function ChessStudio() {
                     </button>
                     <button className="small-action" type="button" onClick={() => resetBoard(false)}>
                       <RotateCcw size={16} /> Reset
+                    </button>
+                    <button className="small-action danger-action" type="button" onClick={resignGame} disabled={!clockStarted || gameEnded}>
+                      <Flag size={16} /> Resign
                     </button>
                   </div>
                 </div>
@@ -620,12 +788,12 @@ export function ChessStudio() {
                       </div>
                     </div>
 
-                    <div className="control-block">
+                    <div className="control-block time-control-block">
                       <div className="control-heading">
                         <span>TIME CONTROL</span>
-                        <b>{activeTime.label}</b>
+                        <b>{activeTime.category} · {activeTime.label}</b>
                       </div>
-                      <div className="time-options">
+                      <div className="time-options expanded">
                         {TIME_CONTROLS.map((control) => (
                           <button
                             type="button"
@@ -633,12 +801,42 @@ export function ChessStudio() {
                             className={timeControlId === control.id ? "active" : ""}
                             onClick={() => setTimeControlId(control.id)}
                           >
-                            <TimerReset size={14} /> {control.label}
+                            <TimerReset size={14} />
+                            <span><b>{control.label}</b><small>{control.category}</small></span>
                           </button>
                         ))}
                       </div>
                     </div>
 
+                    <div className="control-block side-control-block">
+                      <div className="control-heading">
+                        <span>PLAY AS</span>
+                        <b>{sideChoice.toUpperCase()}</b>
+                      </div>
+                      <div className="side-options">
+                        {SIDE_OPTIONS.map((option) => (
+                          <button
+                            type="button"
+                            key={option.id}
+                            className={sideChoice === option.id ? "active" : ""}
+                            onClick={() => setSideChoice(option.id)}
+                          >
+                            {option.id === "random" ? (
+                              <Shuffle size={14} />
+                            ) : (
+                              <i className={"side-disc " + option.id} />
+                            )}
+                            <span><b>{option.label}</b><small>{option.hint}</small></span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="game-setup-summary">
+                      <span><Clock3 size={13} /> {activeTime.label}</span>
+                      <span><Swords size={13} /> {DIFFICULTIES[difficulty - 1].label}</span>
+                      <span>{sideChoice === "random" ? "?" : sideChoice === "white" ? "♙" : "♟"} {sideChoice}</span>
+                    </div>
                     <button className="start-bot-button" type="button" onClick={() => startBotGame()}>
                       <Swords size={17} /> Challenge {selectedBot.name} <ChevronRight size={16} />
                     </button>
@@ -652,7 +850,7 @@ export function ChessStudio() {
                         <span className="engine-icon"><Bot size={20} /></span>
                         <span>
                           <b>Live position lab</b>
-                          <small>Material + legal move preview</small>
+                          <small>{activeTime.category} · {activeTime.label} · playing {playerColor === "w" ? "White" : "Black"}</small>
                         </span>
                       </div>
                       <span className="ready-badge">{botThinking ? "BOT THINKING" : "LIVE"}</span>
@@ -711,7 +909,7 @@ export function ChessStudio() {
                       <ShieldCheck size={17} />
                       <p>
                         <b>Every move stays legal.</b>
-                        Clocks are live, captures are tracked, and each difficulty changes move-selection quality.
+                        Bullet, blitz, rapid, and classical clocks are live; captures, side choice, and difficulty all shape the game.
                       </p>
                     </div>
                   </div>
@@ -773,8 +971,8 @@ export function ChessStudio() {
                       <UsersRound size={19} />
                     </span>
                     <span>
-                      <b>{queueOpen ? "Searching rapid pool…" : "Want a human next?"}</b>
-                      <small>{queueOpen ? "±150 rating · 5+0" : "Multiplayer room contract ready"}</small>
+                      <b>{queueOpen ? "Searching " + activeTime.category.toLowerCase() + " pool…" : "Want a human next?"}</b>
+                      <small>{queueOpen ? "±150 rating · " + activeTime.label : "Multiplayer room contract ready"}</small>
                     </span>
                   </div>
                   <button type="button" onClick={() => setQueueOpen(!queueOpen)}>
@@ -833,7 +1031,7 @@ export function ChessStudio() {
                 <div>
                   <small>GAME TRUTH</small>
                   <h3>Rules core</h3>
-                  <p>Legal moves, clocks, captures, check states, SAN, FEN, and replayable history.</p>
+                  <p>Legal moves, side-aware clocks, increments, captures, check states, SAN, FEN, and replayable history.</p>
                 </div>
                 <b className="status-label ready">READY</b>
               </article>
@@ -842,7 +1040,7 @@ export function ChessStudio() {
                 <div>
                   <small>TRAINING</small>
                   <h3>Bot arena</h3>
-                  <p>Five personalities, five strength levels, and adaptive move selection.</p>
+                  <p>Five personalities, five strength levels, and color-aware play from either side.</p>
                 </div>
                 <b className="status-label ready">LIVE</b>
               </article>
@@ -851,7 +1049,7 @@ export function ChessStudio() {
                 <div>
                   <small>EXPERIENCE</small>
                   <h3>Theme system</h3>
-                  <p>Four instant themes coordinate app, board, accent, and focus colors.</p>
+                  <p>Four interfaces, six board palettes, and four piece sets can be mixed freely.</p>
                 </div>
                 <b className="status-label ready">LIVE</b>
               </article>
