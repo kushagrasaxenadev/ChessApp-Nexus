@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./arena.css";
 
 :root {
   --ink: #f3f4ec;

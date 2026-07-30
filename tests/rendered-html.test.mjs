@@ -33,7 +33,9 @@ test("server-renders the NEXUS product foundation", async () => {
 
   const html = await response.text();
   assert.match(html, /<title>NEXUS — Play\. Think\. Evolve\.<\/title>/i);
-  assert.match(html, /PLAY\. THINK\. EVOLVE\./i);
+  assert.match(html, /BOT ARENA/i);
+  assert.match(html, /Five minds\. Five different problems\./i);
+  assert.match(html, /Difficulty level/i);
   assert.match(html, /Foundation map/i);
   assert.match(html, /Rules core/i);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
