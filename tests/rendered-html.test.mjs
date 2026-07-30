@@ -40,6 +40,9 @@ test("server-renders the NEXUS product foundation", async () => {
   assert.match(html, /Piece set/i);
   assert.match(html, /Play as/i);
   assert.match(html, /Bullet/i);
+  assert.match(html, /promotion choice/i);
+  assert.match(html, /exact draw reasons/i);
+  assert.match(html, /PGN/i);
   assert.match(html, /Foundation map/i);
   assert.match(html, /Rules core/i);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
@@ -58,4 +61,6 @@ test("exposes a machine-readable health contract", async () => {
   assert.equal(health.capabilities.rules, "ready");
   assert.equal(health.capabilities.bots, "ready");
   assert.equal(health.capabilities.timeControls, "ready");
+  assert.equal(health.capabilities.promotion, "ready");
+  assert.equal(health.capabilities.drawRules, "ready");
 });

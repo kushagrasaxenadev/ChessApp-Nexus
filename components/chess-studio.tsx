@@ -7,8 +7,10 @@ import {
   BrainCircuit,
   ChevronRight,
   Clock3,
+  Clipboard,
   Crown,
   Flag,
+  FileText,
   FlipVertical2,
   Gauge,
   Globe2,
@@ -126,11 +128,18 @@ for (let rank = 8; rank >= 1; rank -= 1) {
 
 type PanelId = "bots" | "analysis" | "moves" | "coach";
 type SideChoice = "white" | "black" | "random";
+type PromotionPiece = "q" | "r" | "b" | "n";
 
 const SIDE_OPTIONS: Array<{ id: SideChoice; label: string; hint: string }> = [
   { id: "white", label: "White", hint: "You move first" },
   { id: "random", label: "Random", hint: "Surprise side" },
   { id: "black", label: "Black", hint: "Bot moves first" },
+];
+const PROMOTION_OPTIONS: Array<{ id: PromotionPiece; label: string }> = [
+  { id: "q", label: "Queen" },
+  { id: "r", label: "Rook" },
+  { id: "b", label: "Bishop" },
+  { id: "n", label: "Knight" },
 ];
 
 function cloneGame(game: Chess) {
@@ -162,6 +171,22 @@ function winnerColor(
   return null;
 }
 
+function drawReason(game: Chess) {
+  if (game.isStalemate()) return "Draw by stalemate";
+  if (game.isInsufficientMaterial()) return "Draw by insufficient material";
+  if (game.isThreefoldRepetition()) return "Draw by threefold repetition";
+  if (game.isDrawByFiftyMoves()) return "Draw by the fifty-move rule";
+  return "Draw";
+}
+
+function moveKind(san: string, captured?: string) {
+  if (san.includes("#")) return "mate";
+  if (san.includes("+")) return "check";
+  if (san.startsWith("O-O")) return "castle";
+  if (san.includes("=")) return "promotion";
+  if (captured) return "capture";
+  return "quiet";
+}
 function gameStatus(
   game: Chess,
   whiteClock: number,
@@ -178,7 +203,7 @@ function gameStatus(
       ? "You win" + (byTime ? " on time" : " by checkmate")
       : botName + " wins" + (byTime ? " on time" : " by checkmate");
   }
-  if (game.isDraw()) return "Draw";
+  if (game.isDraw()) return drawReason(game);
   if (game.isCheck()) {
     return game.turn() === playerColor ? "Your king is in check" : botName + " is in check";
   }
@@ -202,6 +227,7 @@ function resultTitle(
   manualResult: string | null,
 ) {
   if (manualResult) return "Game resigned";
+  if (game.isStalemate()) return "Stalemate";
   if (game.isDraw()) return "Game drawn";
   const winner = winnerColor(game, whiteClock, blackClock);
   if (winner) return winner === playerColor ? "Victory" : "Defeat";
@@ -236,6 +262,8 @@ export function ChessStudio() {
   const [sideChoice, setSideChoice] = useState<SideChoice>("white");
   const [playerColor, setPlayerColor] = useState<PlayerColor>("w");
   const [manualResult, setManualResult] = useState<string | null>(null);
+  const [pendingPromotion, setPendingPromotion] = useState<{ from: Square; to: Square } | null>(null);
+  const [copyNotice, setCopyNotice] = useState<string | null>(null);
   const [themeOpen, setThemeOpen] = useState(false);
   const [flipped, setFlipped] = useState(false);
   const [clockStarted, setClockStarted] = useState(false);
@@ -257,6 +285,7 @@ export function ChessStudio() {
     clockStarted && game.turn() === botColor && !gameEnded;
   const playerClock = playerColor === "w" ? whiteClock : blackClock;
   const botClock = botColor === "w" ? whiteClock : blackClock;
+  const fullMoveNumber = Number(game.fen().split(" ")[5]);
   const displaySquares = useMemo(
     () => (flipped ? [...BASE_SQUARES].reverse() : BASE_SQUARES),
     [flipped],
@@ -291,17 +320,23 @@ export function ChessStudio() {
   );
   const evaluation = materialScore(game);
   const whiteShare = Math.max(16, Math.min(84, 50 + evaluation * 7));
-  const candidates = game.moves({ verbose: true }).slice(0, 3);
+  const legalMoves = game.moves({ verbose: true });
+  const candidates = legalMoves.slice(0, engineDepth === "quick" ? 3 : 8);
 
   useEffect(() => {
     if (!clockStarted || gameEnded) return;
+    let lastTick = window.performance.now();
     const timer = window.setInterval(() => {
+      const now = window.performance.now();
+      const elapsedSeconds = Math.floor((now - lastTick) / 1000);
+      if (elapsedSeconds < 1) return;
+      lastTick += elapsedSeconds * 1000;
       if (game.turn() === "w") {
-        setWhiteClock((value) => Math.max(0, value - 1));
+        setWhiteClock((value) => Math.max(0, value - elapsedSeconds));
       } else {
-        setBlackClock((value) => Math.max(0, value - 1));
+        setBlackClock((value) => Math.max(0, value - elapsedSeconds));
       }
-    }, 1000);
+    }, 250);
     return () => window.clearInterval(timer);
   }, [clockStarted, game, gameEnded]);
 
@@ -337,21 +372,45 @@ export function ChessStudio() {
     selectedBot,
   ]);
 
+  function commitPlayerMove(
+    from: Square,
+    to: Square,
+    promotion: PromotionPiece = "q",
+  ) {
+    const next = cloneGame(game);
+    const move = next.move({ from, to, promotion });
+    if (!move) return;
+
+    setGame(next);
+    setLastMove({ from, to });
+    setPendingPromotion(null);
+    if (playerColor === "w") {
+      setWhiteClock((value) => value + activeTime.increment);
+    } else {
+      setBlackClock((value) => value + activeTime.increment);
+    }
+    setClockStarted(true);
+  }
+
   function handleSquareClick(square: Square) {
-    if (gameEnded || botThinking || game.turn() !== playerColor) return;
+    if (
+      gameEnded ||
+      botThinking ||
+      pendingPromotion ||
+      game.turn() !== playerColor
+    ) {
+      return;
+    }
+
     if (selected && legalTargets.includes(square)) {
-      const next = cloneGame(game);
-      const move = next.move({ from: selected, to: square, promotion: "q" });
-      if (move) {
-        setGame(next);
-        setLastMove({ from: selected, to: square });
-        if (playerColor === "w") {
-          setWhiteClock((value) => value + activeTime.increment);
-        } else {
-          setBlackClock((value) => value + activeTime.increment);
-        }
-        setClockStarted(true);
+      const movingPiece = game.get(selected);
+      const reachesBackRank =
+        movingPiece?.type === "p" && (square[1] === "1" || square[1] === "8");
+      if (reachesBackRank) {
+        setPendingPromotion({ from: selected, to: square });
+        return;
       }
+      commitPlayerMove(selected, square);
       setSelected(null);
       return;
     }
@@ -364,7 +423,6 @@ export function ChessStudio() {
 
     setSelected(null);
   }
-
   function undoMove() {
     if (botThinking) return;
     const nextGame = cloneGame(game);
@@ -375,6 +433,7 @@ export function ChessStudio() {
     }
     setGame(nextGame);
     setSelected(null);
+    setPendingPromotion(null);
     setLastMove(null);
     setManualResult(null);
     setClockStarted(false);
@@ -383,6 +442,7 @@ export function ChessStudio() {
   function resetBoard(startClock = false) {
     setGame(new Chess());
     setSelected(null);
+    setPendingPromotion(null);
     setLastMove(null);
     setQueueOpen(false);
     setManualResult(null);
@@ -407,6 +467,7 @@ export function ChessStudio() {
     setFlipped(nextColor === "b");
     setGame(new Chess());
     setSelected(null);
+    setPendingPromotion(null);
     setLastMove(null);
     setManualResult(null);
     setWhiteClock(activeTime.base);
@@ -417,6 +478,15 @@ export function ChessStudio() {
   function resignGame() {
     if (!clockStarted || gameEnded) return;
     setManualResult("You resigned. " + selectedBot.name + " wins.");
+  }
+  async function copyGameText(value: string, label: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopyNotice(label + " copied");
+    } catch {
+      setCopyNotice("Clipboard unavailable");
+    }
+    window.setTimeout(() => setCopyNotice(null), 1800);
   }
   return (
     <div className="app-shell" data-theme={theme} data-board={boardTheme} data-pieces={pieceSet}>
@@ -660,6 +730,44 @@ export function ChessStudio() {
                       );
                     })}
                   </div>
+                  {pendingPromotion && (
+                    <div
+                      className="promotion-dialog"
+                      role="dialog"
+                      aria-modal="true"
+                      aria-label="Choose promotion piece"
+                    >
+                      <small>PROMOTE PAWN</small>
+                      <h2>Choose a piece</h2>
+                      <div>
+                        {PROMOTION_OPTIONS.map((option) => (
+                          <button
+                            type="button"
+                            key={option.id}
+                            onClick={() => {
+                              commitPlayerMove(
+                                pendingPromotion.from,
+                                pendingPromotion.to,
+                                option.id,
+                              );
+                              setSelected(null);
+                            }}
+                            aria-label={"Promote to " + option.label}
+                          >
+                            <b>{pieceSymbols[playerColor + option.id]}</b>
+                            <span>{option.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                      <button
+                        className="promotion-cancel"
+                        type="button"
+                        onClick={() => setPendingPromotion(null)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
                   {gameEnded && (
                     <div className="board-result">
                       <span><Crown size={22} /></span>
@@ -853,39 +961,47 @@ export function ChessStudio() {
                           <small>{activeTime.category} · {activeTime.label} · playing {playerColor === "w" ? "White" : "Black"}</small>
                         </span>
                       </div>
-                      <span className="ready-badge">{botThinking ? "BOT THINKING" : "LIVE"}</span>
+                      <span className="ready-badge">{botThinking ? "BOT THINKING" : "RULES VERIFIED"}</span>
                     </div>
 
                     <div className="eval-card">
                       <div>
-                        <span>POSITION</span>
+                        <span>MATERIAL</span>
                         <strong>{evaluation >= 0 ? "+" : ""}{evaluation.toFixed(1)}</strong>
                         <small>{openingName(history)}</small>
                       </div>
                       <Gauge size={43} strokeWidth={1.25} />
                     </div>
 
-                    <div className="depth-switch" aria-label="Analysis depth">
+                    <div className="position-facts" aria-label="Exact position state">
+                      <span><small>TURN</small><b>{game.turn() === "w" ? "White" : "Black"}</b></span>
+                      <span><small>MOVE</small><b>{fullMoveNumber}</b></span>
+                      <span>
+                        <small>STATE</small>
+                        <b>{gameEnded ? "Complete" : game.isCheck() ? "Check" : "Legal"}</b>
+                      </span>
+                    </div>
+                    <div className="depth-switch" aria-label="Legal move count">
                       <button
                         type="button"
                         className={engineDepth === "quick" ? "active" : ""}
                         onClick={() => setEngineDepth("quick")}
                       >
-                        Quick · D18
+                        Show 3 moves
                       </button>
                       <button
                         type="button"
                         className={engineDepth === "deep" ? "active" : ""}
                         onClick={() => setEngineDepth("deep")}
                       >
-                        Deep · queued
+                        Show 8 moves
                       </button>
                     </div>
 
                     <div className="candidate-list">
                       <div className="candidate-heading">
-                        <span>Candidate moves</span>
-                        <small>{engineDepth === "quick" ? "browser budget" : "service budget"}</small>
+                        <span>Legal move explorer</span>
+                        <small>{legalMoves.length} legal moves</small>
                       </div>
                       {candidates.length ? (
                         candidates.map((move, index) => (
@@ -893,11 +1009,9 @@ export function ChessStudio() {
                             <span className="line-rank">{index + 1}</span>
                             <b>{move.san}</b>
                             <span className="line-preview">
-                              {index === 0 ? "principal variation" : "alternative line"}
+                              {move.from} → {move.to}
                             </span>
-                            <strong>
-                              {(evaluation + (index === 0 ? 0.2 : -index * 0.1)).toFixed(1)}
-                            </strong>
+                            <strong>{moveKind(move.san, move.captured)}</strong>
                           </div>
                         ))
                       ) : (
@@ -909,7 +1023,7 @@ export function ChessStudio() {
                       <ShieldCheck size={17} />
                       <p>
                         <b>Every move stays legal.</b>
-                        Bullet, blitz, rapid, and classical clocks are live; captures, side choice, and difficulty all shape the game.
+                        Legal moves, exact draw reasons, promotion choices, and side-aware clocks are verified by the rules core.
                       </p>
                     </div>
                   </div>
@@ -923,6 +1037,22 @@ export function ChessStudio() {
                         <b>{openingName(history)}</b>
                       </div>
                       <small>{history.length} ply</small>
+                    </div>
+                    <div className="game-tools">
+                      <button
+                        type="button"
+                        disabled={!history.length}
+                        onClick={() => void copyGameText(game.pgn(), "PGN")}
+                      >
+                        <FileText size={14} /> Copy PGN
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void copyGameText(game.fen(), "FEN")}
+                      >
+                        <Clipboard size={14} /> Copy FEN
+                      </button>
+                      {copyNotice && <span role="status">{copyNotice}</span>}
                     </div>
                     {moveRows.length ? (
                       <div className="move-table">
@@ -1031,7 +1161,7 @@ export function ChessStudio() {
                 <div>
                   <small>GAME TRUTH</small>
                   <h3>Rules core</h3>
-                  <p>Legal moves, side-aware clocks, increments, captures, check states, SAN, FEN, and replayable history.</p>
+                  <p>Legal moves, promotion choice, exact draw reasons, side-aware clocks, SAN, FEN, PGN, and replayable history.</p>
                 </div>
                 <b className="status-label ready">READY</b>
               </article>
