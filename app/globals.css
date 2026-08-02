@@ -1835,3 +1835,462 @@ input[type="range"] {
   cursor: not-allowed;
   opacity: 0.35;
 }
+/* Selection clarity and NEXUS identity */
+.brand-mark {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--lime) 72%, white);
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--lime) 88%, white), var(--lime));
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, var(--lime) 8%, transparent),
+    0 10px 34px color-mix(in srgb, var(--lime) 22%, transparent);
+  text-decoration: none;
+}
+
+.brand-mark::before {
+  position: absolute;
+  inset: 2px;
+  border: 1px solid rgba(17, 21, 11, 0.16);
+  border-radius: 12px;
+  content: "";
+}
+
+.brand-mark > span {
+  position: relative;
+  z-index: 1;
+  font: 950 24px/1 var(--font-geist-sans);
+  letter-spacing: -0.08em;
+}
+
+.brand-mark > svg {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  z-index: 2;
+  padding: 2px;
+  border-radius: 50%;
+  background: #11150b;
+  color: var(--lime);
+}
+
+.wordmark {
+  align-items: center;
+  gap: 10px;
+}
+
+.wordmark > .wordmark-emblem {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--lime) 48%, var(--line));
+  border-radius: 10px;
+  background: linear-gradient(145deg, var(--lime-soft), rgba(255, 255, 255, 0.02));
+  color: var(--lime);
+  font-size: initial;
+  letter-spacing: initial;
+}
+
+.wordmark > .wordmark-copy {
+  display: grid;
+  gap: 1px;
+  font-size: initial;
+  letter-spacing: initial;
+}
+
+.wordmark-copy b {
+  color: var(--ink);
+  font-size: 19px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  line-height: 1;
+}
+
+.wordmark-copy small {
+  color: color-mix(in srgb, var(--lime) 82%, white);
+  font-size: 7px;
+  letter-spacing: 0.24em;
+}
+
+.panel-tabs button {
+  min-height: 52px;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.panel-tabs button.active {
+  background: linear-gradient(180deg, var(--lime-soft), transparent);
+  color: var(--ink);
+}
+
+.panel-tabs button.active svg {
+  color: var(--lime);
+  filter: drop-shadow(0 0 7px color-mix(in srgb, var(--lime) 40%, transparent));
+}
+
+.control-heading {
+  margin-bottom: 13px;
+}
+
+.control-heading > span {
+  color: #8a9286;
+  font-size: 8px;
+  font-weight: 750;
+}
+
+.control-heading > b {
+  border-radius: 5px;
+  background: var(--lime-soft);
+  color: color-mix(in srgb, var(--lime) 88%, white);
+  font-size: 8px;
+  padding: 5px 7px;
+}
+
+.bot-mini-grid button,
+.difficulty-track button,
+.time-options.expanded button,
+.side-options button,
+.engine-presets button,
+.strength-mode-switch button {
+  position: relative;
+  transition:
+    border-color 150ms ease,
+    background 150ms ease,
+    color 150ms ease,
+    box-shadow 150ms ease,
+    transform 150ms ease;
+}
+
+.bot-mini-grid button:hover,
+.difficulty-track button:hover,
+.time-options.expanded button:hover,
+.side-options button:hover,
+.engine-presets button:hover,
+.strength-mode-switch button:hover {
+  transform: translateY(-1px);
+}
+
+.bot-mini-grid button.active,
+.time-options.expanded button.active,
+.side-options button.active,
+.engine-presets button.active,
+.strength-mode-switch button.active {
+  border-color: color-mix(in srgb, var(--lime) 76%, white);
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--lime) 17%, transparent), var(--lime-soft));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--lime) 14%, transparent),
+    0 7px 22px color-mix(in srgb, var(--lime) 10%, transparent);
+  color: var(--ink);
+}
+
+.bot-mini-grid button.active::after,
+.time-options.expanded button.active::after,
+.side-options button.active::after,
+.engine-presets button.active::after,
+.strength-mode-switch button.active::after {
+  position: absolute;
+  top: 5px;
+  right: 6px;
+  display: grid;
+  width: 14px;
+  height: 14px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--lime);
+  color: #11150b;
+  content: "✓";
+  font: 900 8px/1 var(--font-mono);
+}
+
+.difficulty-track {
+  gap: 6px;
+}
+
+.difficulty-track button {
+  min-height: 53px;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.015);
+  padding: 9px 3px 7px;
+}
+
+.difficulty-track button::before {
+  position: absolute;
+  top: 0;
+  right: 7px;
+  left: 7px;
+  width: auto;
+}
+
+.difficulty-track button.active {
+  border-color: color-mix(in srgb, var(--lime) 72%, white);
+  background: linear-gradient(180deg, var(--lime-soft), rgba(255, 255, 255, 0.018));
+  box-shadow: 0 7px 22px color-mix(in srgb, var(--lime) 10%, transparent);
+  color: var(--ink);
+}
+
+.difficulty-track button.active::after {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--lime);
+  box-shadow: 0 0 8px var(--lime);
+  content: "";
+}
+
+.difficulty-track button > span {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.difficulty-track button small {
+  color: #828a7e;
+  font-size: 7px;
+}
+
+.difficulty-track button.active small {
+  color: var(--lime);
+}
+
+.time-options.expanded {
+  gap: 7px;
+}
+
+.time-options.expanded button {
+  min-height: 52px;
+  justify-content: flex-start;
+  padding: 9px 8px;
+}
+
+.time-options.expanded button > svg {
+  flex: 0 0 auto;
+  color: #747c71;
+}
+
+.time-options.expanded button.active > svg,
+.side-options button.active > svg {
+  color: var(--lime);
+}
+
+.time-options.expanded b,
+.side-options b {
+  color: #dce2d7;
+  font-size: 9px;
+}
+
+.time-options.expanded small,
+.side-options small {
+  color: #7c8478;
+  font-size: 7px;
+}
+
+.side-options button {
+  min-height: 54px;
+  padding-right: 24px;
+}
+
+.side-options .side-disc {
+  width: 18px;
+  height: 18px;
+  box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.16);
+}
+
+.theme-options button,
+.board-theme-options button,
+.piece-set-options button {
+  position: relative;
+  transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+
+.theme-options button:hover,
+.board-theme-options button:hover,
+.piece-set-options button:hover {
+  transform: translateY(-1px);
+}
+
+.theme-options button.active,
+.board-theme-options button.active,
+.piece-set-options button.active {
+  border-color: color-mix(in srgb, var(--lime) 64%, white);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--lime) 14%, transparent);
+}
+
+.board-theme-options button.active::after,
+.piece-set-options button.active::after {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  display: grid;
+  width: 14px;
+  height: 14px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--lime);
+  color: #11150b;
+  content: "✓";
+  font: 900 8px/1 var(--font-mono);
+}
+
+.theme-options button.active > b {
+  border-radius: 4px;
+  background: var(--lime);
+  color: #11150b;
+  padding: 3px 5px;
+}
+
+.selection-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 9px;
+  border: 1px solid color-mix(in srgb, var(--lime) 13%, var(--line));
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.014);
+  padding: 9px 10px;
+}
+
+.selection-note > svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--lime);
+}
+
+.selection-note > span {
+  display: grid;
+  gap: 3px;
+}
+
+.selection-note b {
+  color: #dce2d7;
+  font-size: 9px;
+}
+
+.selection-note small {
+  color: #798176;
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+.setup-review {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin: 3px 0 12px;
+  border: 1px solid color-mix(in srgb, var(--lime) 30%, var(--line));
+  border-radius: 11px;
+  background:
+    radial-gradient(circle at 92% 10%, var(--lime-soft), transparent 44%),
+    rgba(255, 255, 255, 0.018);
+  padding: 11px;
+}
+
+.setup-review-avatar {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 10px;
+  font: 900 9px var(--font-mono);
+}
+
+.setup-review > span:nth-child(2) {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.setup-review small {
+  color: var(--lime);
+  font: 700 6px var(--font-mono);
+  letter-spacing: 0.12em;
+}
+
+.setup-review b {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.setup-review em {
+  overflow: hidden;
+  color: #7d8579;
+  font: 7px var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.setup-review > svg {
+  color: var(--lime);
+}
+
+.game-setup-summary {
+  margin-bottom: 12px;
+}
+
+.game-setup-summary span {
+  border-color: color-mix(in srgb, var(--lime) 18%, var(--line));
+  background: rgba(255, 255, 255, 0.02);
+  color: #a2aa9e;
+  font-size: 7px;
+  padding: 6px 9px;
+}
+
+.start-bot-button {
+  min-height: 48px;
+  border: 1px solid color-mix(in srgb, var(--lime) 76%, white);
+  border-radius: 10px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--lime) 92%, white), var(--lime));
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--lime) 16%, transparent);
+  color: #11150b;
+  font-weight: 850;
+}
+
+.start-bot-button:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.04);
+}
+
+@media (max-width: 720px) {
+  .wordmark {
+    gap: 8px;
+  }
+
+  .wordmark > .wordmark-emblem {
+    width: 31px;
+    height: 31px;
+  }
+
+  .wordmark-copy b {
+    font-size: 17px;
+  }
+
+  .selection-note small {
+    font-size: 8px;
+  }
+}
+
+@media (max-width: 460px) {
+  .time-options.expanded {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .difficulty-track button {
+    min-height: 50px;
+  }
+
+  .setup-review {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .setup-review > svg {
+    display: none;
+  }
+}

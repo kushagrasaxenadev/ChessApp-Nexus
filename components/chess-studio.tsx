@@ -945,7 +945,8 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
     <div className="app-shell" data-theme={theme} data-board={boardTheme} data-pieces={pieceSet}>
       <aside className="side-rail" aria-label="Primary navigation">
         <a className="brand-mark" href="#" aria-label="NEXUS home">
-          <Crown size={25} strokeWidth={2.4} />
+          <span>N</span>
+          <Crown size={15} strokeWidth={2.6} />
         </a>
 
         <nav className="rail-nav">
@@ -980,9 +981,12 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
 
       <div className="app-main">
         <header className="topbar">
-          <div className="wordmark">
-            <span>NEXUS</span>
-            <small>CHESS NETWORK</small>
+          <div className="wordmark" aria-label="NEXUS Chess Lab">
+            <span className="wordmark-emblem"><Crown size={18} strokeWidth={2.5} /></span>
+            <span className="wordmark-copy">
+              <b>NEXUS</b>
+              <small>CHESS LAB</small>
+            </span>
           </div>
 
           <div className="topbar-status">
@@ -1016,6 +1020,8 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
                           type="button"
                           className={theme === option.id ? "active" : ""}
                           key={option.id}
+                          aria-pressed={theme === option.id}
+                          aria-label={option.name + " interface theme"}
                           onClick={() => setTheme(option.id)}
                         >
                           <span className="theme-swatches">
@@ -1037,6 +1043,8 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
                           type="button"
                           className={boardTheme === option.id ? "active" : ""}
                           key={option.id}
+                          aria-pressed={boardTheme === option.id}
+                          aria-label={option.name + " board palette"}
                           onClick={() => setBoardTheme(option.id)}
                         >
                           <span className="board-swatch">
@@ -1059,6 +1067,8 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
                           type="button"
                           className={pieceSet === option.id ? "active" : ""}
                           key={option.id}
+                          aria-pressed={pieceSet === option.id}
+                          aria-label={option.name + " piece set"}
                           onClick={() => setPieceSet(option.id)}
                         >
                           <b>{option.preview}</b>
@@ -1361,6 +1371,7 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
                           type="button"
                           key={bot.id}
                           className={selectedBotId === bot.id ? "active" : ""}
+                          aria-pressed={selectedBotId === bot.id}
                           onClick={() => setSelectedBotId(bot.id)}
                         >
                           <span className={"mini-bot bot-" + bot.accent}>{bot.initials}</span>
@@ -1380,6 +1391,7 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
                             type="button"
                             key={level.id}
                             className={difficulty === level.id ? "active" : ""}
+                            aria-pressed={difficulty === level.id}
                             onClick={() => setDifficulty(level.id)}
                             aria-label={level.label + " difficulty"}
                           >
@@ -1416,12 +1428,28 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
                             type="button"
                             key={control.id}
                             className={timeControlId === control.id ? "active" : ""}
+                            aria-pressed={timeControlId === control.id}
                             onClick={() => setTimeControlId(control.id)}
                           >
                             <TimerReset size={14} />
                             <span><b>{control.label}</b><small>{control.category}</small></span>
                           </button>
                         ))}
+                      </div>
+                      <div className="selection-note">
+                        <Clock3 size={15} />
+                        <span>
+                          <b>{activeTime.category} pace · {activeTime.label}</b>
+                          <small>
+                            {activeTime.base <= 60
+                              ? "Instant decisions. Best for fast reactions and opening memory."
+                              : activeTime.base <= 300
+                                ? "A quick tactical game with enough time for short calculations."
+                                : activeTime.base <= 600
+                                  ? "Balanced thinking time for tactics, plans, and endgames."
+                                  : "Long-form chess with time for deeper calculation and strategy."}
+                          </small>
+                        </span>
                       </div>
                     </div>
 
@@ -1436,6 +1464,7 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
                             type="button"
                             key={option.id}
                             className={sideChoice === option.id ? "active" : ""}
+                            aria-pressed={sideChoice === option.id}
                             onClick={() => setSideChoice(option.id)}
                           >
                             {option.id === "random" ? (
@@ -1447,6 +1476,29 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
                           </button>
                         ))}
                       </div>
+                      <div className="selection-note">
+                        <Swords size={15} />
+                        <span>
+                          <b>{sideChoice === "white" ? "You make the first move" : sideChoice === "black" ? selectedBot.name + " moves first" : "Side chosen at game start"}</b>
+                          <small>
+                            {sideChoice === "white"
+                              ? "Board faces White with the initiative from move one."
+                              : sideChoice === "black"
+                                ? "Board flips to Black so you can practice defensive openings."
+                                : "A fair random choice adds variety to every challenge."}
+                          </small>
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="setup-review">
+                      <span className={"setup-review-avatar bot-" + selectedBot.accent}>{selectedBot.initials}</span>
+                      <span>
+                        <small>MATCH CONFIGURATION</small>
+                        <b>{selectedBot.name} · approximately {effectiveBotRating}</b>
+                        <em>{currentDifficulty.label} · {activeTime.category} {activeTime.label} · play as {sideChoice}</em>
+                      </span>
+                      <ShieldCheck size={18} />
                     </div>
 
                     <div className="game-setup-summary">
@@ -1604,6 +1656,7 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
                             type="button"
                             key={preset.id}
                             className={enginePreset === preset.id ? "active" : ""}
+                            aria-pressed={enginePreset === preset.id}
                             onClick={() => applyEnginePreset(preset.id)}
                           >
                             <b>{preset.label}</b>
@@ -1671,6 +1724,7 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
                               type="button"
                               key={mode}
                               className={engineStrengthMode === mode ? "active" : ""}
+                              aria-pressed={engineStrengthMode === mode}
                               onClick={() => setEngineStrengthMode(mode)}
                             >
                               {mode === "full" ? "Maximum" : mode === "skill" ? "Skill level" : "Rated Elo"}
