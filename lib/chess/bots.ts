@@ -16,7 +16,7 @@ export const BOT_PROFILES = [
     id: "sprout",
     name: "Sprout",
     initials: "SP",
-    rating: 480,
+    strengthOffset: -150,
     title: "The friendly explorer",
     style: "Playful",
     description: "Leaves chances on the board and helps new players build confidence.",
@@ -31,7 +31,7 @@ export const BOT_PROFILES = [
     id: "ember",
     name: "Ember",
     initials: "EM",
-    rating: 860,
+    strengthOffset: -75,
     title: "The fearless attacker",
     style: "Aggressive",
     description: "Hunts checks, open files, and tactical complications at every chance.",
@@ -46,7 +46,7 @@ export const BOT_PROFILES = [
     id: "atlas",
     name: "Atlas",
     initials: "AT",
-    rating: 1380,
+    strengthOffset: 0,
     title: "The balanced rival",
     style: "Universal",
     description: "Develops cleanly, values material, and punishes loose pieces.",
@@ -61,7 +61,7 @@ export const BOT_PROFILES = [
     id: "vesper",
     name: "Vesper",
     initials: "VS",
-    rating: 1780,
+    strengthOffset: 75,
     title: "The quiet strategist",
     style: "Positional",
     description: "Controls the center, improves every piece, and squeezes small weaknesses.",
@@ -76,7 +76,7 @@ export const BOT_PROFILES = [
     id: "oracle",
     name: "Oracle",
     initials: "OR",
-    rating: 2240,
+    strengthOffset: 150,
     title: "The calculation machine",
     style: "Precise",
     description: "Calculates forcing replies and rarely gives material back.",
@@ -90,11 +90,56 @@ export const BOT_PROFILES = [
 ] as const;
 
 export const DIFFICULTIES = [
-  { id: 1, label: "Rookie", rating: "400-650", depth: "Random" },
-  { id: 2, label: "Casual", rating: "700-1000", depth: "Tactical" },
-  { id: 3, label: "Club", rating: "1100-1450", depth: "1 ply" },
-  { id: 4, label: "Expert", rating: "1500-1850", depth: "2 ply" },
-  { id: 5, label: "Master", rating: "1900+", depth: "Precise" },
+  {
+    id: 1,
+    label: "Rookie",
+    rating: "350-650",
+    targetRating: 500,
+    depth: "Forgiving",
+    searchDepth: 0,
+    engine: "training",
+    engineLabel: "Training AI",
+  },
+  {
+    id: 2,
+    label: "Casual",
+    rating: "750-1050",
+    targetRating: 900,
+    depth: "Tactical",
+    searchDepth: 0,
+    engine: "training",
+    engineLabel: "Training AI",
+  },
+  {
+    id: 3,
+    label: "Club",
+    rating: "1350-1650",
+    targetRating: 1500,
+    depth: "Depth 10",
+    searchDepth: 10,
+    engine: "stockfish-limited",
+    engineLabel: "Stockfish 18 · Elo limited",
+  },
+  {
+    id: 4,
+    label: "Expert",
+    rating: "1900-2200",
+    targetRating: 2050,
+    depth: "Depth 15",
+    searchDepth: 15,
+    engine: "stockfish-limited",
+    engineLabel: "Stockfish 18 · Elo limited",
+  },
+  {
+    id: 5,
+    label: "Master",
+    rating: "2600-2900",
+    targetRating: 2750,
+    depth: "Depth 20",
+    searchDepth: 20,
+    engine: "stockfish-limited",
+    engineLabel: "Stockfish 18 · Master strength",
+  },
 ] as const;
 
 export const THEMES = [
@@ -139,6 +184,11 @@ export type BoardThemeId = (typeof BOARD_THEMES)[number]["id"];
 export type PieceSetId = (typeof PIECE_SETS)[number]["id"];
 export type TimeControlId = (typeof TIME_CONTROLS)[number]["id"];
 export type PlayerColor = "w" | "b";
+
+export function getBotRating(bot: BotProfile, difficulty: Difficulty) {
+  const level = DIFFICULTIES[difficulty - 1];
+  return Math.max(300, Math.min(3000, level.targetRating + bot.strengthOffset));
+}
 
 function materialScore(game: Chess) {
   return game

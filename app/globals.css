@@ -1470,3 +1470,41 @@ a:focus-visible {
     animation-iteration-count: 1 !important;
   }
 }
+
+.bot-strength-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 13px;
+  padding: 10px 11px;
+  border: 1px solid color-mix(in srgb, var(--lime) 22%, var(--line));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--lime) 5%, transparent);
+}
+
+.bot-strength-note svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--lime);
+}
+
+.bot-strength-note span {
+  display: grid;
+  gap: 3px;
+}
+
+.bot-strength-note b {
+  color: #dce5d6;
+  font: 700 9px var(--font-mono);
+  letter-spacing: 0.03em;
+}
+
+.bot-strength-note small {
+  color: #8f998a;
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+.bot-strength-note small.warning {
+  color: #ffba72;
+}

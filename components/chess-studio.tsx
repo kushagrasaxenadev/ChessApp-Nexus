@@ -46,6 +46,7 @@ import {
   THEMES,
   TIME_CONTROLS,
   chooseBotMove,
+  getBotRating,
   type BoardThemeId,
   type BotId,
   type Difficulty,
@@ -134,6 +135,7 @@ for (let rank = 8; rank >= 1; rank -= 1) {
 type PanelId = "bots" | "online" | "analysis" | "moves" | "coach";
 type SideChoice = "white" | "black" | "random";
 type PromotionPiece = "q" | "r" | "b" | "n";
+type BotMoveChoice = { from: Square; to: Square; promotion?: PromotionPiece };
 type Viewer = {
   displayName: string;
   email: string;
@@ -344,9 +346,13 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
   const [whiteClock, setWhiteClock] = useState(180);
   const [blackClock, setBlackClock] = useState(180);
   const stockfishRef = useRef<StockfishClient | null>(null);
+  const botStockfishRef = useRef<StockfishClient | null>(null);
+  const [botEngineWarning, setBotEngineWarning] = useState<string | null>(null);
 
   const selectedBot =
     BOT_PROFILES.find((bot) => bot.id === selectedBotId) ?? BOT_PROFILES[2];
+  const currentDifficulty = DIFFICULTIES[difficulty - 1];
+  const effectiveBotRating = getBotRating(selectedBot, difficulty);
   const activeTime =
     TIME_CONTROLS.find((control) => control.id === timeControlId) ??
     TIME_CONTROLS[3];
@@ -454,11 +460,15 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
     };
   }, [viewer]);
   useEffect(() => {
-    const client = new StockfishClient();
-    stockfishRef.current = client;
+    const analysisClient = new StockfishClient();
+    const botClient = new StockfishClient();
+    stockfishRef.current = analysisClient;
+    botStockfishRef.current = botClient;
     return () => {
       stockfishRef.current = null;
-      client.dispose();
+      botStockfishRef.current = null;
+      analysisClient.dispose();
+      botClient.dispose();
     };
   }, []);
 
@@ -538,31 +548,92 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
 
   useEffect(() => {
     if (playMode !== "bot" || !clockStarted || game.turn() !== botColor || gameEnded) return;
+
+    let cancelled = false;
     const delay = Math.max(220, selectedBot.delay - difficulty * 75);
-    const timer = window.setTimeout(() => {
-      const nextGame = cloneGame(game);
-      const choice = chooseBotMove(nextGame, difficulty, selectedBot, botColor);
-      if (choice) {
-        const played = nextGame.move({
-          from: choice.from,
-          to: choice.to,
-          promotion: choice.promotion ?? "q",
-        });
-        setGame(nextGame);
-        setLastMove({ from: played.from, to: played.to });
-        if (botColor === "w") {
-          setWhiteClock((value) => value + activeTime.increment);
-        } else {
-          setBlackClock((value) => value + activeTime.increment);
+    const timer = window.setTimeout(async () => {
+      const sourceGame = cloneGame(game);
+      const trainingChoice =
+        currentDifficulty.engine === "training"
+          ? chooseBotMove(sourceGame, difficulty, selectedBot, botColor)
+          : null;
+      let choice: BotMoveChoice | null = trainingChoice
+        ? {
+            from: trainingChoice.from,
+            to: trainingChoice.to,
+            promotion: trainingChoice.promotion as PromotionPiece | undefined,
+          }
+        : null;
+
+      if (currentDifficulty.engine !== "training") {
+        setBotEngineWarning(null);
+        try {
+          const result = await botStockfishRef.current?.analyze(
+            game.fen(),
+            currentDifficulty.searchDepth,
+            1,
+            {
+              limitStrength: currentDifficulty.engine === "stockfish-limited",
+              elo: effectiveBotRating,
+              skillLevel: 20,
+            },
+          );
+          const bestMove = result?.bestMove;
+          if (bestMove && /^[a-h][1-8][a-h][1-8][qrbn]?$/.test(bestMove)) {
+            choice = {
+              from: bestMove.slice(0, 2) as Square,
+              to: bestMove.slice(2, 4) as Square,
+              promotion: (bestMove[4] ?? "q") as "q" | "r" | "b" | "n",
+            };
+          } else {
+            throw new Error("Stockfish returned no legal move");
+          }
+        } catch (error) {
+          const fallback = chooseBotMove(sourceGame, difficulty, selectedBot, botColor);
+          choice = fallback
+            ? {
+                from: fallback.from,
+                to: fallback.to,
+                promotion: fallback.promotion as PromotionPiece | undefined,
+              }
+            : null;
+          if (!cancelled) {
+            setBotEngineWarning(
+              (error instanceof Error ? error.message : "Engine unavailable") +
+                " · using tactical fallback",
+            );
+          }
         }
       }
+
+      if (cancelled || !choice) return;
+      const nextGame = cloneGame(game);
+      const played = nextGame.move({
+        from: choice.from,
+        to: choice.to,
+        promotion: choice.promotion ?? "q",
+      });
+      setGame(nextGame);
+      setLastMove({ from: played.from, to: played.to });
+      if (botColor === "w") {
+        setWhiteClock((value) => value + activeTime.increment);
+      } else {
+        setBlackClock((value) => value + activeTime.increment);
+      }
     }, delay);
-    return () => window.clearTimeout(timer);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      if (currentDifficulty.engine !== "training") botStockfishRef.current?.stop();
+    };
   }, [
     activeTime.increment,
     botColor,
     clockStarted,
+    currentDifficulty,
     difficulty,
+    effectiveBotRating,
     game,
     gameEnded,
     selectedBot,
@@ -689,6 +760,7 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
           : "b";
 
     setSelectedBotId(botId);
+    setBotEngineWarning(null);
     setPanel("analysis");
     setPlayerColor(nextColor);
     setFlipped(nextColor === "b");
@@ -984,7 +1056,7 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
               <div className="game-presence">
                 <Globe2 size={17} />
                 <span>{playMode === "online" ? "Room " + onlineRoom?.code : selectedBot.name} · {activeTime.category} {activeTime.label}</span>
-                <b>{playMode === "online" ? "AUTHORITATIVE SERVER" : "LOCAL ENGINE · 0 ms"}</b>
+                <b>{playMode === "online" ? "AUTHORITATIVE SERVER" : currentDifficulty.engine === "training" ? "TRAINING AI · CALIBRATED" : "STOCKFISH 18 · " + currentDifficulty.depth.toUpperCase()}</b>
               </div>
             </div>
 
@@ -998,7 +1070,7 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
                     <span>
                       <b>{opponentName} <em className="cpu-badge">{playMode === "online" ? "LIVE" : "BOT"}</em></b>
                       <small>
-                        {playMode === "online" ? "Connected" : selectedBot.rating} · {botColor === "w" ? "White" : "Black"} · {playMode === "online" ? "server verified" : selectedBot.style}
+                        {playMode === "online" ? "Connected" : "~" + effectiveBotRating + " estimated"} · {botColor === "w" ? "White" : "Black"} · {playMode === "online" ? "server verified" : selectedBot.style}
                         {botThinking && <span className="thinking-dots"><i /><i /><i /></span>}
                       </small>
                     </span>
@@ -1199,7 +1271,7 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
                         <h2>{selectedBot.name}</h2>
                         <p>{selectedBot.title}</p>
                       </div>
-                      <strong>{selectedBot.rating}</strong>
+                      <strong>{effectiveBotRating}</strong>
                     </div>
 
                     <div className="bot-mini-grid">
@@ -1219,7 +1291,7 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
                     <div className="control-block">
                       <div className="control-heading">
                         <span>DIFFICULTY LEVEL</span>
-                        <b>{DIFFICULTIES[difficulty - 1].label} Â· {DIFFICULTIES[difficulty - 1].rating}</b>
+                        <b>{currentDifficulty.label} · {currentDifficulty.rating}</b>
                       </div>
                       <div className="difficulty-track">
                         {DIFFICULTIES.map((level) => (
@@ -1234,6 +1306,21 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
                             <small>{level.label}</small>
                           </button>
                         ))}
+                      </div>
+                      <div className="bot-strength-note">
+                        <ShieldCheck size={15} />
+                        <span>
+                          <b>{currentDifficulty.engineLabel}</b>
+                          <small className={botEngineWarning ? "warning" : ""}>
+                            {botEngineWarning ??
+                              ("Estimated strength " +
+                                effectiveBotRating +
+                                ". " +
+                                (currentDifficulty.engine === "training"
+                                  ? "Controlled mistakes keep this level fair."
+                                  : currentDifficulty.depth + " search with legal engine play."))}
+                          </small>
+                        </span>
                       </div>
                     </div>
 
@@ -1283,7 +1370,7 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
 
                     <div className="game-setup-summary">
                       <span><Clock3 size={13} /> {activeTime.label}</span>
-                      <span><Swords size={13} /> {DIFFICULTIES[difficulty - 1].label}</span>
+                      <span><Swords size={13} /> {currentDifficulty.label}</span>
                       <span>{sideChoice === "random" ? "?" : sideChoice === "white" ? "â™™" : "â™Ÿ"} {sideChoice}</span>
                     </div>
                     <button className="start-bot-button" type="button" onClick={() => startBotGame()}>
@@ -1542,7 +1629,7 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
                 <p className="eyebrow">TRAINING SQUAD</p>
                 <h2 id="bot-roster-heading">Five minds. Five different problems.</h2>
               </div>
-              <p>Personality changes priorities. Difficulty changes how accurately each bot chooses.</p>
+              <p>Difficulty controls real playing strength. Club, Expert, and Master calculate with Stockfish 18; profile ranking fine-tunes the target.</p>
             </div>
             <div className="bot-roster">
               {BOT_PROFILES.map((bot) => (
@@ -1556,7 +1643,7 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
                   }}
                 >
                   <span className={"roster-avatar bot-" + bot.accent}>{bot.initials}</span>
-                  <span className="roster-rating">{bot.rating}</span>
+                  <span className="roster-rating">{getBotRating(bot, difficulty)}</span>
                   <span className="roster-copy">
                     <small>{bot.style}</small>
                     <b>{bot.name}</b>

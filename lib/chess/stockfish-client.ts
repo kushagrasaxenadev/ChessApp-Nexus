@@ -20,6 +20,12 @@ export type StockfishAnalysis = {
   lines: StockfishLine[];
 };
 
+export type StockfishSearchOptions = {
+  limitStrength?: boolean;
+  elo?: number;
+  skillLevel?: number;
+};
+
 type ParsedInfo = Omit<StockfishLine, "san">;
 
 type ActiveSearch = {
@@ -167,7 +173,7 @@ export class StockfishClient {
     }
   };
 
-  async analyze(fen: string, depth: number, multiPv = 3) {
+  async analyze(fen: string, depth: number, multiPv = 3, options: StockfishSearchOptions = {}) {
     if (this.disposed) throw new Error("Stockfish client is closed");
     await this.ready;
 
@@ -176,6 +182,10 @@ export class StockfishClient {
       this.worker.postMessage("stop");
       await finished;
     }
+
+    const limitStrength = options.limitStrength ?? false;
+    const elo = Math.max(1320, Math.min(3190, Math.round(options.elo ?? 1320)));
+    const skillLevel = Math.max(0, Math.min(20, Math.round(options.skillLevel ?? 20)));
 
     let finish!: () => void;
     const finished = new Promise<void>((resolve) => {
@@ -192,6 +202,9 @@ export class StockfishClient {
         finished,
         finish,
       };
+      this.worker.postMessage(`setoption name UCI_LimitStrength value ${limitStrength ? "true" : "false"}`);
+      this.worker.postMessage(`setoption name Skill Level value ${skillLevel}`);
+      if (limitStrength) this.worker.postMessage(`setoption name UCI_Elo value ${elo}`);
       this.worker.postMessage(`setoption name MultiPV value ${Math.max(1, Math.min(5, multiPv))}`);
       this.worker.postMessage(`position fen ${fen}`);
       this.worker.postMessage(`go depth ${Math.max(1, depth)}`);
