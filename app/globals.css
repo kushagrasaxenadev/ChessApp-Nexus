@@ -1508,3 +1508,330 @@ a:focus-visible {
 .bot-strength-note small.warning {
   color: #ffba72;
 }
+.engine-lab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 17px;
+}
+
+.ready-badge.stale {
+  border-color: rgba(255, 186, 114, 0.3);
+  background: rgba(255, 153, 85, 0.08);
+  color: #ffba72;
+}
+
+.engine-eval-card {
+  margin: 0;
+  background:
+    radial-gradient(circle at 90% 20%, color-mix(in srgb, var(--lime) 10%, transparent), transparent 40%),
+    rgba(255, 255, 255, 0.025);
+}
+
+.engine-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.engine-metrics > span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.018);
+  padding: 9px 10px;
+}
+
+.engine-metrics small {
+  color: #687066;
+  font: 7px var(--font-mono);
+  letter-spacing: 0.12em;
+}
+
+.engine-metrics b {
+  overflow: hidden;
+  font: 700 10px var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.engine-config-card {
+  display: grid;
+  gap: 14px;
+  border: 1px solid color-mix(in srgb, var(--lime) 15%, var(--line));
+  border-radius: 12px;
+  background: #0b0e0b;
+  padding: 14px;
+}
+
+.engine-config-heading,
+.engine-config-heading > span,
+.engine-control-label,
+.engine-range-control > span,
+.engine-run-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 9px;
+}
+
+.engine-config-heading > span {
+  justify-content: flex-start;
+}
+
+.engine-config-heading svg {
+  color: var(--lime);
+}
+
+.engine-config-heading b {
+  font-size: 10px;
+}
+
+.engine-config-heading small {
+  border-radius: 4px;
+  background: var(--lime-soft);
+  color: var(--lime);
+  font: 700 7px var(--font-mono);
+  letter-spacing: 0.1em;
+  padding: 4px 6px;
+}
+
+.engine-presets {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5px;
+}
+
+.engine-presets button {
+  display: grid;
+  gap: 3px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: #747c71;
+  cursor: pointer;
+  padding: 9px 7px;
+  text-align: left;
+}
+
+.engine-presets button:hover,
+.engine-presets button.active {
+  border-color: color-mix(in srgb, var(--lime) 38%, var(--line));
+  background: var(--lime-soft);
+  color: var(--ink);
+}
+
+.engine-presets b {
+  font-size: 9px;
+}
+
+.engine-presets small {
+  color: #687066;
+  font: 7px var(--font-mono);
+}
+
+.engine-control-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7px;
+}
+
+.engine-range-control {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.016);
+  padding: 10px;
+}
+
+.engine-range-control > span b {
+  font-size: 8px;
+}
+
+.engine-range-control output {
+  color: var(--lime);
+  font: 700 8px var(--font-mono);
+}
+
+.engine-range-control input[type="range"] {
+  width: 100%;
+  height: 4px;
+  border-radius: 999px;
+  accent-color: var(--lime);
+  cursor: pointer;
+}
+
+.engine-range-control > small {
+  min-height: 22px;
+  color: #646c62;
+  font-size: 7px;
+  line-height: 1.45;
+}
+
+.engine-range-control.compact {
+  margin-top: 9px;
+  padding: 9px 10px;
+}
+
+.engine-strength-control {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.engine-control-label {
+  margin-bottom: 8px;
+}
+
+.engine-control-label span {
+  color: #687066;
+  font: 7px var(--font-mono);
+  letter-spacing: 0.12em;
+}
+
+.engine-control-label b {
+  color: #cfd6ca;
+  font: 700 8px var(--font-mono);
+}
+
+.strength-mode-switch {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+
+.strength-mode-switch button,
+.engine-auto-toggle,
+.engine-run-button {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: transparent;
+  color: #737b70;
+  cursor: pointer;
+  font: 700 8px var(--font-mono);
+  padding: 8px;
+}
+
+.strength-mode-switch button:hover,
+.strength-mode-switch button.active,
+.engine-auto-toggle.active {
+  border-color: color-mix(in srgb, var(--lime) 38%, var(--line));
+  background: var(--lime-soft);
+  color: var(--ink);
+}
+
+.engine-run-row {
+  padding-top: 1px;
+}
+
+.engine-auto-toggle,
+.engine-run-button {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.engine-run-button {
+  border-color: color-mix(in srgb, var(--lime) 50%, var(--line));
+  background: var(--lime);
+  color: #12170a;
+}
+
+.engine-run-button:hover {
+  filter: brightness(1.06);
+}
+
+.engine-lab-panel .candidate-list {
+  min-height: 120px;
+}
+
+button,
+.board-square,
+input[type="range"] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.board-square,
+.piece {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+@media (max-width: 620px) {
+  .engine-control-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .engine-range-control > small {
+    min-height: 0;
+  }
+
+  .engine-metrics {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .engine-run-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .engine-auto-toggle,
+  .engine-run-button {
+    min-height: 42px;
+  }
+}
+
+@media (pointer: coarse) {
+  .board-square {
+    touch-action: manipulation;
+  }
+
+  .panel-tabs button,
+  .bot-mini-grid button,
+  .difficulty-track button,
+  .engine-presets button,
+  .strength-mode-switch button {
+    min-height: 44px;
+  }
+
+  .small-action,
+  .start-bot-button,
+  .engine-auto-toggle,
+  .engine-run-button {
+    min-height: 44px;
+  }
+}
+.engine-data-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: -10px;
+}
+
+.engine-data-actions button {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: transparent;
+  color: #737b70;
+  cursor: pointer;
+  font: 700 7px var(--font-mono);
+  padding: 6px 9px;
+}
+
+.engine-data-actions button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--lime) 36%, var(--line));
+  color: var(--ink);
+}
+
+.engine-data-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}

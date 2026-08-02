@@ -23,10 +23,10 @@ export async function generateMetadata(): Promise<Metadata> {
     requestHeaders.get("x-forwarded-proto") ??
     (host.startsWith("localhost") ? "http" : "https");
   const origin = new URL(protocol + "://" + host);
-  const socialImage = new URL("/og.png", origin).toString();
+  const socialImage = new URL("/og-engine-lab.png", origin).toString();
   const title = "NEXUS — Play. Think. Evolve.";
   const description =
-    "A fast online chess platform foundation for live play, engine analysis, and AI coaching.";
+    "A premium online chess platform for live play, seven ranked bots, configurable Stockfish analysis, and AI coaching.";
 
   return {
     metadataBase: origin,
@@ -45,8 +45,8 @@ export async function generateMetadata(): Promise<Metadata> {
       images: [
         {
           url: socialImage,
-          width: 1733,
-          height: 909,
+          width: 1659,
+          height: 948,
           alt: "NEXUS — Play. Think. Evolve.",
         },
       ],

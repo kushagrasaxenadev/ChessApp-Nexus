@@ -59,33 +59,33 @@ import {
 const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"] as const;
 
 const CLASSIC_PIECES: Record<string, string> = {
-  wp: "â™™",
-  wn: "â™˜",
-  wb: "â™—",
-  wr: "â™–",
-  wq: "â™•",
-  wk: "â™”",
-  bp: "â™Ÿ",
-  bn: "â™ž",
-  bb: "â™",
-  br: "â™œ",
-  bq: "â™›",
-  bk: "â™š",
+  wp: "♙",
+  wn: "♘",
+  wb: "♗",
+  wr: "♖",
+  wq: "♕",
+  wk: "♔",
+  bp: "♟",
+  bn: "♞",
+  bb: "♝",
+  br: "♜",
+  bq: "♛",
+  bk: "♚",
 };
 
 const BOLD_PIECES: Record<string, string> = {
-  wp: "â™Ÿ",
-  wn: "â™ž",
-  wb: "â™",
-  wr: "â™œ",
-  wq: "â™›",
-  wk: "â™š",
-  bp: "â™Ÿ",
-  bn: "â™ž",
-  bb: "â™",
-  br: "â™œ",
-  bq: "â™›",
-  bk: "â™š",
+  wp: "♟",
+  wn: "♞",
+  wb: "♝",
+  wr: "♜",
+  wq: "♛",
+  wk: "♚",
+  bp: "♟",
+  bn: "♞",
+  bb: "♝",
+  br: "♜",
+  bq: "♛",
+  bk: "♚",
 };
 
 const LETTER_PIECES: Record<string, string> = {
@@ -136,6 +136,14 @@ type PanelId = "bots" | "online" | "analysis" | "moves" | "coach";
 type SideChoice = "white" | "black" | "random";
 type PromotionPiece = "q" | "r" | "b" | "n";
 type BotMoveChoice = { from: Square; to: Square; promotion?: PromotionPiece };
+type EnginePreset = "fast" | "balanced" | "deep" | "custom";
+type EngineStrengthMode = "full" | "skill" | "elo";
+
+const ENGINE_PRESETS = [
+  { id: "fast", label: "Fast", detail: "D12 · 1 line", depth: 12, multiPv: 1, hashMb: 16 },
+  { id: "balanced", label: "Balanced", detail: "D16 · 3 lines", depth: 16, multiPv: 3, hashMb: 32 },
+  { id: "deep", label: "Deep", detail: "D22 · 5 lines", depth: 22, multiPv: 5, hashMb: 64 },
+] as const;
 type Viewer = {
   displayName: string;
   email: string;
@@ -309,6 +317,23 @@ function openingName(history: string[]) {
   return history.length ? "Opening explorer" : "Starting position";
 }
 
+function formatEngineNumber(value?: number) {
+  if (!value) return "—";
+  if (value >= 1_000_000) return (value / 1_000_000).toFixed(1) + "m";
+  if (value >= 1_000) return Math.round(value / 1_000) + "k";
+  return String(value);
+}
+
+function pulseTouchFeedback(duration = 8) {
+  if (
+    typeof window !== "undefined" &&
+    window.matchMedia("(pointer: coarse)").matches &&
+    typeof navigator.vibrate === "function"
+  ) {
+    navigator.vibrate(duration);
+  }
+}
+
 export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
   const [game, setGame] = useState(() => new Chess());
   const [selected, setSelected] = useState<Square | null>(null);
@@ -324,7 +349,16 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
   const [ratedOnline, setRatedOnline] = useState(Boolean(viewer));
   const [accountOpen, setAccountOpen] = useState(false);
   const [profile, setProfile] = useState<ProfileData | null>(null);
-  const [engineDepth, setEngineDepth] = useState<"quick" | "deep">("quick");
+  const [enginePreset, setEnginePreset] = useState<EnginePreset>("balanced");
+  const [engineDepth, setEngineDepth] = useState(16);
+  const [engineMultiPv, setEngineMultiPv] = useState(3);
+  const [engineHash, setEngineHash] = useState(32);
+  const [engineStrengthMode, setEngineStrengthMode] =
+    useState<EngineStrengthMode>("full");
+  const [engineElo, setEngineElo] = useState(2200);
+  const [engineSkill, setEngineSkill] = useState(12);
+  const [engineAuto, setEngineAuto] = useState(true);
+  const [analysisRequest, setAnalysisRequest] = useState(0);
   const [stockfishStatus, setStockfishStatus] = useState<"loading" | "ready" | "error">("loading");
   const [stockfishError, setStockfishError] = useState<string | null>(null);
   const [stockfishAnalysis, setStockfishAnalysis] = useState<StockfishAnalysis | null>(null);
@@ -347,10 +381,11 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
   const [blackClock, setBlackClock] = useState(180);
   const stockfishRef = useRef<StockfishClient | null>(null);
   const botStockfishRef = useRef<StockfishClient | null>(null);
+  const manualAnalysisRequestRef = useRef(0);
   const [botEngineWarning, setBotEngineWarning] = useState<string | null>(null);
 
   const selectedBot =
-    BOT_PROFILES.find((bot) => bot.id === selectedBotId) ?? BOT_PROFILES[2];
+    BOT_PROFILES.find((bot) => bot.id === selectedBotId) ?? BOT_PROFILES[3];
   const currentDifficulty = DIFFICULTIES[difficulty - 1];
   const effectiveBotRating = getBotRating(selectedBot, difficulty);
   const activeTime =
@@ -413,6 +448,14 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
   const legalMoves = game.moves({ verbose: true });
   const positionFen = game.fen();
   const bestEngineLine = stockfishAnalysis?.lines[0];
+  const analysisIsStale =
+    Boolean(stockfishAnalysis) && stockfishAnalysis?.fen !== positionFen;
+  const engineStrengthLabel =
+    engineStrengthMode === "full"
+      ? "Maximum"
+      : engineStrengthMode === "skill"
+        ? "Skill " + engineSkill + "/20"
+        : "Elo " + engineElo;
 
   const syncOnlineRoom = useCallback((room: OnlineRoom) => {
     setOnlineRoom(room);
@@ -475,6 +518,8 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
   useEffect(() => {
     const client = stockfishRef.current;
     if (!client || panel !== "analysis" || gameEnded) return;
+    if (!engineAuto && manualAnalysisRequestRef.current === analysisRequest) return;
+    manualAnalysisRequestRef.current = analysisRequest;
 
     let cancelled = false;
     const timer = window.setTimeout(async () => {
@@ -483,8 +528,19 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
       try {
         const result = await client.analyze(
           positionFen,
-          engineDepth === "quick" ? 14 : 20,
-          3,
+          engineDepth,
+          engineMultiPv,
+          {
+            limitStrength: engineStrengthMode === "elo",
+            elo: engineElo,
+            skillLevel:
+              engineStrengthMode === "full"
+                ? 20
+                : engineStrengthMode === "skill"
+                  ? engineSkill
+                  : 20,
+            hashMb: engineHash,
+          },
         );
         if (!cancelled && result.fen === positionFen) {
           setStockfishAnalysis(result);
@@ -496,14 +552,26 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
           setStockfishError(error instanceof Error ? error.message : "Engine unavailable");
         }
       }
-    }, 320);
+    }, 280);
 
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
       client.stop();
     };
-  }, [engineDepth, gameEnded, panel, positionFen]);
+  }, [
+    analysisRequest,
+    engineAuto,
+    engineDepth,
+    engineElo,
+    engineHash,
+    engineMultiPv,
+    engineSkill,
+    engineStrengthMode,
+    gameEnded,
+    panel,
+    positionFen,
+  ]);
   useEffect(() => {
     if (playMode !== "online" || !onlineRoom?.code) return;
     let stopped = false;
@@ -640,6 +708,15 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
     playMode,
   ]);
 
+  function applyEnginePreset(presetId: Exclude<EnginePreset, "custom">) {
+    const preset = ENGINE_PRESETS.find((candidate) => candidate.id === presetId);
+    if (!preset) return;
+    setEnginePreset(preset.id);
+    setEngineDepth(preset.depth);
+    setEngineMultiPv(preset.multiPv);
+    setEngineHash(preset.hashMb);
+  }
+
   async function commitPlayerMove(
     from: Square,
     to: Square,
@@ -664,6 +741,7 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
         );
         syncOnlineRoom(room);
         setLastMove({ from, to });
+        pulseTouchFeedback(12);
       } catch (error) {
         setOnlineError(error instanceof Error ? error.message : "Move was rejected");
       } finally {
@@ -685,6 +763,7 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
       setBlackClock((value) => value + activeTime.increment);
     }
     setClockStarted(true);
+    pulseTouchFeedback(12);
   }
 
   function handleSquareClick(square: Square) {
@@ -703,6 +782,7 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
         movingPiece?.type === "p" && (square[1] === "1" || square[1] === "8");
       if (reachesBackRank) {
         setPendingPromotion({ from: selected, to: square });
+        pulseTouchFeedback(8);
         return;
       }
       commitPlayerMove(selected, square);
@@ -713,6 +793,7 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
     const piece = game.get(square);
     if (piece && piece.color === playerColor) {
       setSelected(square);
+      pulseTouchFeedback(5);
       return;
     }
 
@@ -906,7 +987,7 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
 
           <div className="topbar-status">
             <span className="live-dot" />
-            <span>{activeTime.category} arena Â· {activeTime.label}</span>
+            <span>{activeTime.category} arena · {activeTime.label}</span>
           </div>
 
           <div className="topbar-actions">
@@ -1327,7 +1408,7 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
                     <div className="control-block time-control-block">
                       <div className="control-heading">
                         <span>TIME CONTROL</span>
-                        <b>{activeTime.category} Â· {activeTime.label}</b>
+                        <b>{activeTime.category} · {activeTime.label}</b>
                       </div>
                       <div className="time-options expanded">
                         {TIME_CONTROLS.map((control) => (
@@ -1371,7 +1452,7 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
                     <div className="game-setup-summary">
                       <span><Clock3 size={13} /> {activeTime.label}</span>
                       <span><Swords size={13} /> {currentDifficulty.label}</span>
-                      <span>{sideChoice === "random" ? "?" : sideChoice === "white" ? "â™™" : "â™Ÿ"} {sideChoice}</span>
+                      <span>{sideChoice === "random" ? "?" : sideChoice === "white" ? "♙" : "♟"} {sideChoice}</span>
                     </div>
                     <button className="start-bot-button" type="button" onClick={() => startBotGame()}>
                       <Swords size={17} /> Challenge {selectedBot.name} <ChevronRight size={16} />
@@ -1455,21 +1536,27 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
                   </div>
                 )}
                 {panel === "analysis" && (
-                  <div className="panel-content">
+                  <div className="panel-content engine-lab-panel">
                     <div className="engine-header">
                       <div>
                         <span className="engine-icon"><Bot size={20} /></span>
                         <span>
-                          <b>Stockfish 18 analysis</b>
-                          <small>{activeTime.category} · {activeTime.label} · playing {playerColor === "w" ? "White" : "Black"}</small>
+                          <b>Stockfish 18 Engine Lab</b>
+                          <small>{engineStrengthLabel} · 1 browser thread · local analysis</small>
                         </span>
                       </div>
-                      <span className="ready-badge">
-                        {stockfishStatus === "ready" ? `DEPTH ${stockfishAnalysis?.depth ?? 0}` : stockfishStatus === "error" ? "ENGINE ERROR" : "ANALYZING"}
+                      <span className={["ready-badge", analysisIsStale ? "stale" : ""].filter(Boolean).join(" ")}>
+                        {stockfishStatus === "ready"
+                          ? analysisIsStale
+                            ? "POSITION CHANGED"
+                            : "DEPTH " + (stockfishAnalysis?.depth ?? 0)
+                          : stockfishStatus === "error"
+                            ? "ENGINE ERROR"
+                            : "ANALYZING"}
                       </span>
                     </div>
 
-                    <div className="eval-card">
+                    <div className="eval-card engine-eval-card">
                       <div>
                         <span>WHITE EVALUATION</span>
                         <strong>
@@ -1480,35 +1567,171 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
                       <Gauge size={43} strokeWidth={1.25} />
                     </div>
 
-                    <div className="position-facts" aria-label="Exact position state">
+                    <div className="engine-metrics" aria-label="Stockfish performance">
                       <span><small>TURN</small><b>{game.turn() === "w" ? "White" : "Black"}</b></span>
                       <span><small>MOVE</small><b>{fullMoveNumber}</b></span>
-                      <span>
-                        <small>STATE</small>
-                        <b>{gameEnded ? "Complete" : game.isCheck() ? "Check" : "Legal"}</b>
-                      </span>
+                      <span><small>NODES</small><b>{formatEngineNumber(bestEngineLine?.nodes)}</b></span>
+                      <span><small>NPS</small><b>{formatEngineNumber(bestEngineLine?.nps)}</b></span>
+                      <span><small>TIME</small><b>{stockfishAnalysis ? Math.round(stockfishAnalysis.elapsedMs) + " ms" : "—"}</b></span>
                     </div>
-                    <div className="depth-switch" aria-label="Stockfish search depth">
-                      <button
-                        type="button"
-                        className={engineDepth === "quick" ? "active" : ""}
-                        onClick={() => setEngineDepth("quick")}
-                      >
-                        Quick · depth 14
+                    <div className="engine-data-actions">
+                      <button type="button" onClick={() => void copyGameText(positionFen, "FEN")}>
+                        <Clipboard size={13} /> Copy FEN
                       </button>
                       <button
                         type="button"
-                        className={engineDepth === "deep" ? "active" : ""}
-                        onClick={() => setEngineDepth("deep")}
+                        disabled={!bestEngineLine?.san.length}
+                        onClick={() =>
+                          void copyGameText(bestEngineLine?.san.join(" ") ?? "", "engine line")
+                        }
                       >
-                        Deep · depth 20
+                        <FileText size={13} /> Copy best line
                       </button>
                     </div>
+
+                    <section className="engine-config-card" aria-labelledby="engine-config-title">
+                      <div className="engine-config-heading">
+                        <span>
+                          <Settings2 size={15} />
+                          <b id="engine-config-title">Analysis configuration</b>
+                        </span>
+                        <small>{enginePreset === "custom" ? "CUSTOM" : enginePreset.toUpperCase()}</small>
+                      </div>
+
+                      <div className="engine-presets" aria-label="Analysis presets">
+                        {ENGINE_PRESETS.map((preset) => (
+                          <button
+                            type="button"
+                            key={preset.id}
+                            className={enginePreset === preset.id ? "active" : ""}
+                            onClick={() => applyEnginePreset(preset.id)}
+                          >
+                            <b>{preset.label}</b>
+                            <small>{preset.detail}</small>
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="engine-control-grid">
+                        <label className="engine-range-control">
+                          <span><b>Search depth</b><output>{engineDepth}</output></span>
+                          <input
+                            type="range"
+                            min="8"
+                            max="24"
+                            step="1"
+                            value={engineDepth}
+                            onChange={(event) => {
+                              setEnginePreset("custom");
+                              setEngineDepth(Number(event.target.value));
+                            }}
+                          />
+                          <small>Higher depth sees further but takes longer.</small>
+                        </label>
+                        <label className="engine-range-control">
+                          <span><b>Principal lines</b><output>{engineMultiPv}</output></span>
+                          <input
+                            type="range"
+                            min="1"
+                            max="5"
+                            step="1"
+                            value={engineMultiPv}
+                            onChange={(event) => {
+                              setEnginePreset("custom");
+                              setEngineMultiPv(Number(event.target.value));
+                            }}
+                          />
+                          <small>Compare up to five candidate moves.</small>
+                        </label>
+                        <label className="engine-range-control">
+                          <span><b>Engine hash</b><output>{engineHash} MB</output></span>
+                          <input
+                            type="range"
+                            min="16"
+                            max="128"
+                            step="16"
+                            value={engineHash}
+                            onChange={(event) => {
+                              setEnginePreset("custom");
+                              setEngineHash(Number(event.target.value));
+                            }}
+                          />
+                          <small>Memory reserved for repeated positions.</small>
+                        </label>
+                      </div>
+
+                      <div className="engine-strength-control">
+                        <div className="engine-control-label">
+                          <span>ENGINE STRENGTH</span>
+                          <b>{engineStrengthLabel}</b>
+                        </div>
+                        <div className="strength-mode-switch" aria-label="Engine strength mode">
+                          {(["full", "skill", "elo"] as EngineStrengthMode[]).map((mode) => (
+                            <button
+                              type="button"
+                              key={mode}
+                              className={engineStrengthMode === mode ? "active" : ""}
+                              onClick={() => setEngineStrengthMode(mode)}
+                            >
+                              {mode === "full" ? "Maximum" : mode === "skill" ? "Skill level" : "Rated Elo"}
+                            </button>
+                          ))}
+                        </div>
+                        {engineStrengthMode === "skill" && (
+                          <label className="engine-range-control compact">
+                            <span><b>Skill level</b><output>{engineSkill} / 20</output></span>
+                            <input
+                              type="range"
+                              min="0"
+                              max="20"
+                              step="1"
+                              value={engineSkill}
+                              onChange={(event) => setEngineSkill(Number(event.target.value))}
+                            />
+                            <small>Stockfish introduces controlled inaccuracies below level 20.</small>
+                          </label>
+                        )}
+                        {engineStrengthMode === "elo" && (
+                          <label className="engine-range-control compact">
+                            <span><b>Target rating</b><output>{engineElo}</output></span>
+                            <input
+                              type="range"
+                              min="1320"
+                              max="3190"
+                              step="10"
+                              value={engineElo}
+                              onChange={(event) => setEngineElo(Number(event.target.value))}
+                            />
+                            <small>Uses Stockfish UCI_LimitStrength for rating-calibrated analysis.</small>
+                          </label>
+                        )}
+                      </div>
+
+                      <div className="engine-run-row">
+                        <button
+                          type="button"
+                          className={["engine-auto-toggle", engineAuto ? "active" : ""].filter(Boolean).join(" ")}
+                          aria-pressed={engineAuto}
+                          onClick={() => setEngineAuto((value) => !value)}
+                        >
+                          <Activity size={14} />
+                          Auto analyze {engineAuto ? "on" : "off"}
+                        </button>
+                        <button
+                          type="button"
+                          className="engine-run-button"
+                          onClick={() => setAnalysisRequest((value) => value + 1)}
+                        >
+                          <Zap size={14} />
+                          Analyze now
+                        </button>
+                      </div>
+                    </section>
 
                     <div className="candidate-list">
                       <div className="candidate-heading">
                         <span>Principal variations</span>
-                        <small>{legalMoves.length} legal moves · MultiPV 3</small>
+                        <small>{legalMoves.length} legal moves · MultiPV {engineMultiPv}</small>
                       </div>
                       {stockfishStatus === "error" ? (
                         <p className="empty-copy">{stockfishError ?? "Stockfish could not start."}</p>
@@ -1518,13 +1741,15 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
                             <span className="line-rank">{line.multipv}</span>
                             <b>{line.san[0] ?? line.pv[0] ?? "—"}</b>
                             <span className="line-preview">
-                              {line.san.slice(0, 7).join(" ")}
+                              {line.san.slice(0, 9).join(" ")}
                             </span>
                             <strong>{formatEngineScore(line, stockfishAnalysis.fen)}</strong>
                           </div>
                         ))
                       ) : gameEnded ? (
                         <p className="empty-copy">Final position reached. No legal continuation remains.</p>
+                      ) : !engineAuto ? (
+                        <p className="empty-copy">Manual mode is ready. Choose settings, then press Analyze now.</p>
                       ) : (
                         <p className="empty-copy">Stockfish is calculating the strongest continuations…</p>
                       )}
@@ -1533,8 +1758,8 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
                     <div className="engine-note">
                       <ShieldCheck size={17} />
                       <p>
-                        <b>Real engine, exact rules.</b>
-                        Stockfish 18 calculates locally in your browser; principal variations use legal SAN moves and scores are normalized for White.
+                        <b>Private, configurable, and exact.</b>
+                        Analysis stays on this device. Strength limits change training behavior only; legal moves, SAN conversion, and score orientation remain exact.
                       </p>
                     </div>
                   </div>
@@ -1570,7 +1795,7 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
                           <div className="move-row" key={row.number}>
                             <span>{row.number}.</span>
                             <b>{row.white}</b>
-                            <b>{row.black ?? "â€¦"}</b>
+                            <b>{row.black ?? "…"}</b>
                           </div>
                         ))}
                       </div>
@@ -1627,7 +1852,7 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
             <div className="roster-heading">
               <div>
                 <p className="eyebrow">TRAINING SQUAD</p>
-                <h2 id="bot-roster-heading">Five minds. Five different problems.</h2>
+                <h2 id="bot-roster-heading">Seven minds. Seven different problems.</h2>
               </div>
               <p>Difficulty controls real playing strength. Club, Expert, and Master calculate with Stockfish 18; profile ranking fine-tunes the target.</p>
             </div>

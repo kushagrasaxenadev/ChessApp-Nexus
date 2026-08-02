@@ -43,6 +43,21 @@ export const BOT_PROFILES = [
     delay: 760,
   },
   {
+    id: "gambit",
+    name: "Gambit",
+    initials: "GM",
+    strengthOffset: -35,
+    title: "The tactical trickster",
+    style: "Tactical",
+    description: "Creates forks, sacrifices, and forcing threats that test calculation.",
+    accent: "rose",
+    captureBias: 1.35,
+    checkBias: 1.85,
+    centerBias: 0.55,
+    variance: 1.8,
+    delay: 620,
+  },
+  {
     id: "atlas",
     name: "Atlas",
     initials: "AT",
@@ -71,6 +86,21 @@ export const BOT_PROFILES = [
     centerBias: 1.7,
     variance: 0.8,
     delay: 820,
+  },
+  {
+    id: "bastion",
+    name: "Bastion",
+    initials: "BS",
+    strengthOffset: 115,
+    title: "The patient defender",
+    style: "Defensive",
+    description: "Neutralizes attacks, protects weak squares, and converts long endgames.",
+    accent: "gold",
+    captureBias: 0.95,
+    checkBias: 0.65,
+    centerBias: 1.45,
+    variance: 0.45,
+    delay: 900,
   },
   {
     id: "oracle",
@@ -147,6 +177,7 @@ export const THEMES = [
   { id: "midnight", name: "Midnight", colors: ["#72d8ff", "#36546b"] },
   { id: "royal", name: "Royal", colors: ["#d5a4ff", "#66507c"] },
   { id: "ember", name: "Ember", colors: ["#ffb45b", "#795542"] },
+  { id: "torch", name: "Torch Glow", colors: ["#ffc857", "#7e291d"] },
 ] as const;
 
 export const BOARD_THEMES = [
@@ -159,10 +190,10 @@ export const BOARD_THEMES = [
 ] as const;
 
 export const PIECE_SETS = [
-  { id: "classic", name: "Classic", preview: "â™žâ™›" },
-  { id: "bold", name: "Bold", preview: "â™Ÿâ™›" },
+  { id: "classic", name: "Classic", preview: "♞♛" },
+  { id: "bold", name: "Bold", preview: "♟♛" },
   { id: "letters", name: "Monogram", preview: "NQ" },
-  { id: "glass", name: "Glass", preview: "â™žâ™›" },
+  { id: "glass", name: "Glass", preview: "♞♛" },
 ] as const;
 
 export const TIME_CONTROLS = [

@@ -24,6 +24,7 @@ export type StockfishSearchOptions = {
   limitStrength?: boolean;
   elo?: number;
   skillLevel?: number;
+  hashMb?: number;
 };
 
 type ParsedInfo = Omit<StockfishLine, "san">;
@@ -186,6 +187,7 @@ export class StockfishClient {
     const limitStrength = options.limitStrength ?? false;
     const elo = Math.max(1320, Math.min(3190, Math.round(options.elo ?? 1320)));
     const skillLevel = Math.max(0, Math.min(20, Math.round(options.skillLevel ?? 20)));
+    const hashMb = Math.max(16, Math.min(128, Math.round(options.hashMb ?? 32)));
 
     let finish!: () => void;
     const finished = new Promise<void>((resolve) => {
@@ -205,6 +207,7 @@ export class StockfishClient {
       this.worker.postMessage(`setoption name UCI_LimitStrength value ${limitStrength ? "true" : "false"}`);
       this.worker.postMessage(`setoption name Skill Level value ${skillLevel}`);
       if (limitStrength) this.worker.postMessage(`setoption name UCI_Elo value ${elo}`);
+      this.worker.postMessage(`setoption name Hash value ${hashMb}`);
       this.worker.postMessage(`setoption name MultiPV value ${Math.max(1, Math.min(5, multiPv))}`);
       this.worker.postMessage(`position fen ${fen}`);
       this.worker.postMessage(`go depth ${Math.max(1, depth)}`);
