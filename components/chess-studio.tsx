@@ -32,7 +32,12 @@ import {
   Zap,
 } from "lucide-react";
 import { Chess, type Square } from "chess.js";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  StockfishClient,
+  formatEngineScore,
+  type StockfishAnalysis,
+} from "../lib/chess/stockfish-client";
 import {
   BOARD_THEMES,
   BOT_PROFILES,
@@ -53,33 +58,33 @@ import {
 const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"] as const;
 
 const CLASSIC_PIECES: Record<string, string> = {
-  wp: "♙",
-  wn: "♘",
-  wb: "♗",
-  wr: "♖",
-  wq: "♕",
-  wk: "♔",
-  bp: "♟",
-  bn: "♞",
-  bb: "♝",
-  br: "♜",
-  bq: "♛",
-  bk: "♚",
+  wp: "â™™",
+  wn: "â™˜",
+  wb: "â™—",
+  wr: "â™–",
+  wq: "â™•",
+  wk: "â™”",
+  bp: "â™Ÿ",
+  bn: "â™ž",
+  bb: "â™",
+  br: "â™œ",
+  bq: "â™›",
+  bk: "â™š",
 };
 
 const BOLD_PIECES: Record<string, string> = {
-  wp: "♟",
-  wn: "♞",
-  wb: "♝",
-  wr: "♜",
-  wq: "♛",
-  wk: "♚",
-  bp: "♟",
-  bn: "♞",
-  bb: "♝",
-  br: "♜",
-  bq: "♛",
-  bk: "♚",
+  wp: "â™Ÿ",
+  wn: "â™ž",
+  wb: "â™",
+  wr: "â™œ",
+  wq: "â™›",
+  wk: "â™š",
+  bp: "â™Ÿ",
+  bn: "â™ž",
+  bb: "â™",
+  br: "â™œ",
+  bq: "â™›",
+  bk: "â™š",
 };
 
 const LETTER_PIECES: Record<string, string> = {
@@ -126,9 +131,76 @@ for (let rank = 8; rank >= 1; rank -= 1) {
   for (const file of FILES) BASE_SQUARES.push((file + String(rank)) as Square);
 }
 
-type PanelId = "bots" | "analysis" | "moves" | "coach";
+type PanelId = "bots" | "online" | "analysis" | "moves" | "coach";
 type SideChoice = "white" | "black" | "random";
 type PromotionPiece = "q" | "r" | "b" | "n";
+type Viewer = {
+  displayName: string;
+  email: string;
+};
+
+type ProfileData = {
+  authenticated: boolean;
+  user: { id: string; displayName: string; email: string | null };
+  ratings: Array<{ pool: string; rating: number; deviation: number; gamesPlayed: number }>;
+  history: Array<{
+    code: string;
+    result: string;
+    termination: string | null;
+    ratingPool: string;
+    rated: boolean;
+    endedAt: number | null;
+    whiteName: string | null;
+    blackName: string | null;
+  }>;
+};
+type OnlineRoom = {
+  id: string;
+  code: string;
+  status: "waiting" | "active" | "finished" | "aborted";
+  rated: boolean;
+  ratingPool: string;
+  fen: string;
+  pgn: string;
+  result: "1-0" | "0-1" | "1/2-1/2" | "*";
+  termination: string | null;
+  version: number;
+  timeBaseMs: number;
+  incrementMs: number;
+  whiteClockMs: number;
+  blackClockMs: number;
+  serverNow: number;
+  white: { id: string; name: string } | null;
+  black: { id: string; name: string } | null;
+  youColor: PlayerColor | null;
+  authenticated: boolean;
+};
+
+function onlineHeaders() {
+  let guestId = window.localStorage.getItem("nexus-guest-id");
+  if (!guestId) {
+    guestId = crypto.randomUUID();
+    window.localStorage.setItem("nexus-guest-id", guestId);
+  }
+  return {
+    "content-type": "application/json",
+    "x-nexus-guest-id": guestId,
+    "x-nexus-guest-name": window.localStorage.getItem("nexus-guest-name") ?? "KnightPilot",
+  };
+}
+
+async function onlineRequest(path: string, init?: RequestInit) {
+  const response = await fetch(path, {
+    ...init,
+    headers: { ...onlineHeaders(), ...(init?.headers ?? {}) },
+    cache: "no-store",
+  });
+  const payload = (await response.json()) as { room?: OnlineRoom; error?: string };
+  if (!response.ok || !payload.room) {
+    throw new Error(payload.error ?? "Multiplayer request failed");
+  }
+  return payload.room;
+}
 
 const SIDE_OPTIONS: Array<{ id: SideChoice; label: string; hint: string }> = [
   { id: "white", label: "White", hint: "You move first" },
@@ -179,14 +251,6 @@ function drawReason(game: Chess) {
   return "Draw";
 }
 
-function moveKind(san: string, captured?: string) {
-  if (san.includes("#")) return "mate";
-  if (san.includes("+")) return "check";
-  if (san.startsWith("O-O")) return "castle";
-  if (san.includes("=")) return "promotion";
-  if (captured) return "capture";
-  return "quiet";
-}
 function gameStatus(
   game: Chess,
   whiteClock: number,
@@ -243,15 +307,25 @@ function openingName(history: string[]) {
   return history.length ? "Opening explorer" : "Starting position";
 }
 
-export function ChessStudio() {
+export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
   const [game, setGame] = useState(() => new Chess());
   const [selected, setSelected] = useState<Square | null>(null);
   const [lastMove, setLastMove] = useState<{ from: Square; to: Square } | null>(
     null,
   );
   const [panel, setPanel] = useState<PanelId>("bots");
-  const [queueOpen, setQueueOpen] = useState(false);
+  const [playMode, setPlayMode] = useState<"bot" | "online">("bot");
+  const [onlineRoom, setOnlineRoom] = useState<OnlineRoom | null>(null);
+  const [roomCodeInput, setRoomCodeInput] = useState("");
+  const [onlineBusy, setOnlineBusy] = useState(false);
+  const [onlineError, setOnlineError] = useState<string | null>(null);
+  const [ratedOnline, setRatedOnline] = useState(Boolean(viewer));
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [profile, setProfile] = useState<ProfileData | null>(null);
   const [engineDepth, setEngineDepth] = useState<"quick" | "deep">("quick");
+  const [stockfishStatus, setStockfishStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [stockfishError, setStockfishError] = useState<string | null>(null);
+  const [stockfishAnalysis, setStockfishAnalysis] = useState<StockfishAnalysis | null>(null);
   const [selectedBotId, setSelectedBotId] = useState<BotId>("atlas");
   const [difficulty, setDifficulty] = useState<Difficulty>(3);
   const [theme, setTheme] = useState<ThemeId>("nexus");
@@ -269,6 +343,7 @@ export function ChessStudio() {
   const [clockStarted, setClockStarted] = useState(false);
   const [whiteClock, setWhiteClock] = useState(180);
   const [blackClock, setBlackClock] = useState(180);
+  const stockfishRef = useRef<StockfishClient | null>(null);
 
   const selectedBot =
     BOT_PROFILES.find((bot) => bot.id === selectedBotId) ?? BOT_PROFILES[2];
@@ -280,9 +355,18 @@ export function ChessStudio() {
   const history = game.history();
   const verboseHistory = game.history({ verbose: true });
   const timedOut = whiteClock <= 0 || blackClock <= 0;
-  const gameEnded = game.isGameOver() || timedOut || manualResult !== null;
+  const gameEnded = game.isGameOver() || timedOut || manualResult !== null || onlineRoom?.status === "finished";
   const botThinking =
-    clockStarted && game.turn() === botColor && !gameEnded;
+    playMode === "bot" && clockStarted && game.turn() === botColor && !gameEnded;
+  const rapidRating = profile?.ratings.find((rating) => rating.pool === "rapid")?.rating ?? 1200;
+  const accountName = profile?.user.displayName ?? viewer?.displayName ?? "KnightPilot";
+  const opponentName = playMode === "online"
+    ? (playerColor === "w" ? onlineRoom?.black?.name : onlineRoom?.white?.name) ?? "Opponent"
+    : selectedBot.name;
+  const selfName = playMode === "online"
+    ? (playerColor === "w" ? onlineRoom?.white?.name : onlineRoom?.black?.name) ?? "KnightPilot"
+    : accountName;
+  const boardLocked = botThinking || onlineBusy || (playMode === "online" && onlineRoom?.status !== "active");
   const playerClock = playerColor === "w" ? whiteClock : blackClock;
   const botClock = botColor === "w" ? whiteClock : blackClock;
   const fullMoveNumber = Number(game.fen().split(" ")[5]);
@@ -321,8 +405,120 @@ export function ChessStudio() {
   const evaluation = materialScore(game);
   const whiteShare = Math.max(16, Math.min(84, 50 + evaluation * 7));
   const legalMoves = game.moves({ verbose: true });
-  const candidates = legalMoves.slice(0, engineDepth === "quick" ? 3 : 8);
+  const positionFen = game.fen();
+  const bestEngineLine = stockfishAnalysis?.lines[0];
 
+  const syncOnlineRoom = useCallback((room: OnlineRoom) => {
+    setOnlineRoom(room);
+    setPlayMode("online");
+
+    if (room.youColor) {
+      setPlayerColor(room.youColor);
+      setFlipped(room.youColor === "b");
+    }
+
+    const next = new Chess();
+    if (room.pgn) next.loadPgn(room.pgn);
+    else next.load(room.fen);
+    const moves = next.history({ verbose: true });
+    const latest = moves[moves.length - 1];
+    setGame(next);
+    setLastMove(latest ? { from: latest.from, to: latest.to } : null);
+    setWhiteClock(Math.max(0, Math.ceil(room.whiteClockMs / 1000)));
+    setBlackClock(Math.max(0, Math.ceil(room.blackClockMs / 1000)));
+    setClockStarted(room.status === "active");
+    setSelected(null);
+    setPendingPromotion(null);
+    setManualResult(
+      room.status === "finished"
+        ? room.result + " · " + (room.termination?.replaceAll("-", " ") ?? "game complete")
+        : null,
+    );
+  }, []);
+  useEffect(() => {
+    if (!viewer) return;
+    let cancelled = false;
+    fetch("/api/me", { headers: onlineHeaders(), cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Profile unavailable");
+        return response.json() as Promise<ProfileData>;
+      })
+      .then((data) => {
+        if (!cancelled) setProfile(data);
+      })
+      .catch(() => {
+        if (!cancelled) setProfile(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [viewer]);
+  useEffect(() => {
+    const client = new StockfishClient();
+    stockfishRef.current = client;
+    return () => {
+      stockfishRef.current = null;
+      client.dispose();
+    };
+  }, []);
+
+  useEffect(() => {
+    const client = stockfishRef.current;
+    if (!client || panel !== "analysis" || gameEnded) return;
+
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      setStockfishStatus("loading");
+      setStockfishError(null);
+      try {
+        const result = await client.analyze(
+          positionFen,
+          engineDepth === "quick" ? 14 : 20,
+          3,
+        );
+        if (!cancelled && result.fen === positionFen) {
+          setStockfishAnalysis(result);
+          setStockfishStatus("ready");
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setStockfishStatus("error");
+          setStockfishError(error instanceof Error ? error.message : "Engine unavailable");
+        }
+      }
+    }, 320);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      client.stop();
+    };
+  }, [engineDepth, gameEnded, panel, positionFen]);
+  useEffect(() => {
+    if (playMode !== "online" || !onlineRoom?.code) return;
+    let stopped = false;
+    let polling = false;
+    const refresh = async () => {
+      if (polling) return;
+      polling = true;
+      try {
+        const room = await onlineRequest("/api/multiplayer/rooms/" + onlineRoom.code);
+        if (!stopped) {
+          syncOnlineRoom(room);
+          setOnlineError(null);
+        }
+      } catch (error) {
+        if (!stopped) setOnlineError(error instanceof Error ? error.message : "Connection lost");
+      } finally {
+        polling = false;
+      }
+    };
+    const timer = window.setInterval(refresh, 1000);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [onlineRoom?.code, playMode, syncOnlineRoom]);
   useEffect(() => {
     if (!clockStarted || gameEnded) return;
     let lastTick = window.performance.now();
@@ -341,7 +537,7 @@ export function ChessStudio() {
   }, [clockStarted, game, gameEnded]);
 
   useEffect(() => {
-    if (!clockStarted || game.turn() !== botColor || gameEnded) return;
+    if (playMode !== "bot" || !clockStarted || game.turn() !== botColor || gameEnded) return;
     const delay = Math.max(220, selectedBot.delay - difficulty * 75);
     const timer = window.setTimeout(() => {
       const nextGame = cloneGame(game);
@@ -370,13 +566,41 @@ export function ChessStudio() {
     game,
     gameEnded,
     selectedBot,
+    playMode,
   ]);
 
-  function commitPlayerMove(
+  async function commitPlayerMove(
     from: Square,
     to: Square,
     promotion: PromotionPiece = "q",
   ) {
+    if (playMode === "online" && onlineRoom) {
+      setOnlineBusy(true);
+      setOnlineError(null);
+      try {
+        const room = await onlineRequest(
+          "/api/multiplayer/rooms/" + onlineRoom.code + "/move",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              action: "move",
+              expectedVersion: onlineRoom.version,
+              from,
+              to,
+              promotion,
+            }),
+          },
+        );
+        syncOnlineRoom(room);
+        setLastMove({ from, to });
+      } catch (error) {
+        setOnlineError(error instanceof Error ? error.message : "Move was rejected");
+      } finally {
+        setOnlineBusy(false);
+      }
+      return;
+    }
+
     const next = cloneGame(game);
     const move = next.move({ from, to, promotion });
     if (!move) return;
@@ -395,7 +619,7 @@ export function ChessStudio() {
   function handleSquareClick(square: Square) {
     if (
       gameEnded ||
-      botThinking ||
+      boardLocked ||
       pendingPromotion ||
       game.turn() !== playerColor
     ) {
@@ -424,7 +648,7 @@ export function ChessStudio() {
     setSelected(null);
   }
   function undoMove() {
-    if (botThinking) return;
+    if (botThinking || playMode === "online") return;
     const nextGame = cloneGame(game);
     const undone = nextGame.undo();
     if (!undone) return;
@@ -440,11 +664,12 @@ export function ChessStudio() {
   }
 
   function resetBoard(startClock = false) {
+    setPlayMode("bot");
+    setOnlineRoom(null);
     setGame(new Chess());
     setSelected(null);
     setPendingPromotion(null);
     setLastMove(null);
-    setQueueOpen(false);
     setManualResult(null);
     setWhiteClock(activeTime.base);
     setBlackClock(activeTime.base);
@@ -452,6 +677,8 @@ export function ChessStudio() {
   }
 
   function startBotGame(botId: BotId = selectedBotId) {
+    setPlayMode("bot");
+    setOnlineRoom(null);
     const nextColor: PlayerColor =
       sideChoice === "random"
         ? Math.random() > 0.5
@@ -475,8 +702,81 @@ export function ChessStudio() {
     setClockStarted(true);
   }
 
-  function resignGame() {
+  async function createOnlineGame() {
+    setOnlineBusy(true);
+    setOnlineError(null);
+    setPanel("online");
+    try {
+      const room = await onlineRequest("/api/multiplayer/rooms", {
+        method: "POST",
+        body: JSON.stringify({
+          color: sideChoice,
+          baseSeconds: activeTime.base,
+          incrementSeconds: activeTime.increment,
+          rated: ratedOnline && Boolean(viewer),
+        }),
+      });
+      syncOnlineRoom(room);
+    } catch (error) {
+      setOnlineError(error instanceof Error ? error.message : "Could not create room");
+    } finally {
+      setOnlineBusy(false);
+    }
+  }
+
+  async function joinOnlineGame() {
+    const code = roomCodeInput.trim().toUpperCase();
+    if (!/^[A-Z2-9]{6}$/.test(code)) {
+      setOnlineError("Enter the six-character room code.");
+      return;
+    }
+    setOnlineBusy(true);
+    setOnlineError(null);
+    try {
+      const room = await onlineRequest("/api/multiplayer/rooms/" + code, {
+        method: "POST",
+        body: "{}",
+      });
+      syncOnlineRoom(room);
+    } catch (error) {
+      setOnlineError(error instanceof Error ? error.message : "Could not join room");
+    } finally {
+      setOnlineBusy(false);
+    }
+  }
+
+  function leaveOnlineGame() {
+    setOnlineRoom(null);
+
+    setPlayMode("bot");
+    setOnlineError(null);
+    resetBoard(false);
+  }
+
+  async function resignGame() {
     if (!clockStarted || gameEnded) return;
+    if (playMode === "online" && onlineRoom) {
+      setOnlineBusy(true);
+      setOnlineError(null);
+      try {
+        const room = await onlineRequest(
+          "/api/multiplayer/rooms/" + onlineRoom.code + "/move",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              action: "resign",
+              expectedVersion: onlineRoom.version,
+            }),
+          },
+        );
+        syncOnlineRoom(room);
+      } catch (error) {
+        setOnlineError(error instanceof Error ? error.message : "Resignation failed");
+      } finally {
+        setOnlineBusy(false);
+      }
+      return;
+    }
     setManualResult("You resigned. " + selectedBot.name + " wins.");
   }
   async function copyGameText(value: string, label: string) {
@@ -534,7 +834,7 @@ export function ChessStudio() {
 
           <div className="topbar-status">
             <span className="live-dot" />
-            <span>{activeTime.category} arena · {activeTime.label}</span>
+            <span>{activeTime.category} arena Â· {activeTime.label}</span>
           </div>
 
           <div className="topbar-actions">
@@ -620,15 +920,55 @@ export function ChessStudio() {
             <button className="icon-button search-button" type="button" aria-label="Search">
               <Search size={18} />
             </button>
-            <button className="profile-chip" type="button">
-              <span className="avatar avatar-self">K</span>
-              <span className="profile-copy">
-                <b>KnightPilot</b>
-                <small>1,684 rapid</small>
-              </span>
-              <ChevronRight size={16} />
-            </button>
-            <button className="icon-button mobile-menu" type="button" aria-label="Open menu">
+            {viewer ? (
+              <div className="account-menu-wrap">
+                <button className="profile-chip" type="button" onClick={() => setAccountOpen(!accountOpen)} aria-expanded={accountOpen}>
+                  <span className="avatar avatar-self">{accountName.slice(0, 1).toUpperCase()}</span>
+                  <span className="profile-copy">
+                    <b>{accountName}</b>
+                    <small>{rapidRating.toLocaleString()} rapid</small>
+                  </span>
+                  <ChevronRight size={16} />
+                </button>
+                {accountOpen && (
+                  <div className="account-popover">
+                    <div className="account-head">
+                      <span className="avatar avatar-self">{accountName.slice(0, 1).toUpperCase()}</span>
+                      <span><b>{accountName}</b><small>{viewer.email}</small></span>
+                      <span className="ready-badge">SIGNED IN</span>
+                    </div>
+                    <div className="rating-grid">
+                      {(profile?.ratings ?? []).map((rating) => (
+                        <span key={rating.pool}>
+                          <small>{rating.pool}</small>
+                          <b>{rating.rating}</b>
+                          <em>{rating.gamesPlayed} games</em>
+                        </span>
+                      ))}
+                    </div>
+                    <div className="account-history">
+                      <small>RECENT RATED GAMES</small>
+                      {profile?.history.length ? profile.history.slice(0, 4).map((item) => (
+                        <span key={item.code}>
+                          <b>{item.whiteName} vs {item.blackName}</b>
+                          <em>{item.result} · {item.ratingPool}</em>
+                        </span>
+                      )) : <p>Your first rated game will appear here.</p>}
+                    </div>
+                    <a href="/signout-with-chatgpt?return_to=%2F">Sign out</a>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <a className="profile-chip" href="/signin-with-chatgpt?return_to=%2F">
+                <span className="avatar avatar-self">?</span>
+                <span className="profile-copy">
+                  <b>Sign in</b>
+                  <small>Enable ratings</small>
+                </span>
+                <ChevronRight size={16} />
+              </a>
+            )}            <button className="icon-button mobile-menu" type="button" aria-label="Open menu">
               <Menu size={20} />
             </button>
           </div>
@@ -638,13 +978,13 @@ export function ChessStudio() {
           <section className="play-section" aria-labelledby="play-heading">
             <div className="section-intro">
               <div>
-                <p className="eyebrow">BOT ARENA · TRAIN WITHOUT LIMITS</p>
+                <p className="eyebrow">{playMode === "online" ? "LIVE ROOM · SERVER VERIFIED" : "BOT ARENA · TRAIN WITHOUT LIMITS"}</p>
                 <h1 id="play-heading">Find the rival that makes you better.</h1>
               </div>
               <div className="game-presence">
                 <Globe2 size={17} />
-                <span>{selectedBot.name} · {activeTime.category} {activeTime.label}</span>
-                <b>LOCAL ENGINE · 0 ms</b>
+                <span>{playMode === "online" ? "Room " + onlineRoom?.code : selectedBot.name} · {activeTime.category} {activeTime.label}</span>
+                <b>{playMode === "online" ? "AUTHORITATIVE SERVER" : "LOCAL ENGINE · 0 ms"}</b>
               </div>
             </div>
 
@@ -652,13 +992,13 @@ export function ChessStudio() {
               <div className="board-zone">
                 <div className="player-row">
                   <div className="player-identity">
-                    <span className={"avatar avatar-bot bot-" + selectedBot.accent}>
-                      {selectedBot.initials}
+                    <span className={"avatar avatar-bot bot-" + (playMode === "online" ? "blue" : selectedBot.accent)}>
+                      {playMode === "online" ? opponentName.slice(0, 2).toUpperCase() : selectedBot.initials}
                     </span>
                     <span>
-                      <b>{selectedBot.name} <em className="cpu-badge">BOT</em></b>
+                      <b>{opponentName} <em className="cpu-badge">{playMode === "online" ? "LIVE" : "BOT"}</em></b>
                       <small>
-                        {selectedBot.rating} · {botColor === "w" ? "White" : "Black"} · {selectedBot.style}
+                        {playMode === "online" ? "Connected" : selectedBot.rating} · {botColor === "w" ? "White" : "Black"} · {playMode === "online" ? "server verified" : selectedBot.style}
                         {botThinking && <span className="thinking-dots"><i /><i /><i /></span>}
                       </small>
                     </span>
@@ -699,7 +1039,7 @@ export function ChessStudio() {
                         lastMove && (lastMove.from === square || lastMove.to === square)
                           ? "last-move"
                           : "",
-                        botThinking ? "board-locked" : "",
+                        boardLocked ? "board-locked" : "",
                       ].filter(Boolean).join(" ");
 
                       return (
@@ -773,9 +1113,9 @@ export function ChessStudio() {
                       <span><Crown size={22} /></span>
                       <small>GAME COMPLETE</small>
                       <h2>{resultTitle(game, whiteClock, blackClock, playerColor, manualResult)}</h2>
-                      <p>{gameStatus(game, whiteClock, blackClock, playerColor, selectedBot.name, manualResult)}</p>
-                      <button type="button" onClick={() => startBotGame()}>
-                        <RotateCcw size={16} /> Rematch {selectedBot.name}
+                      <p>{gameStatus(game, whiteClock, blackClock, playerColor, opponentName, manualResult)}</p>
+                      <button type="button" onClick={() => playMode === "online" ? setPanel("online") : startBotGame()}>
+                        <RotateCcw size={16} /> {playMode === "online" ? "Room details" : "Rematch " + selectedBot.name}
                       </button>
                     </div>
                   )}
@@ -785,8 +1125,8 @@ export function ChessStudio() {
                   <div className="player-identity">
                     <span className="avatar avatar-self">K</span>
                     <span>
-                      <b>KnightPilot <em>YOU</em></b>
-                      <small>1,684 · {playerColor === "w" ? "White" : "Black"}</small>
+                      <b>{selfName} <em>YOU</em></b>
+                      <small>{rapidRating.toLocaleString()} · {playerColor === "w" ? "White" : "Black"}</small>
                     </span>
                   </div>
                   <div className="captured-line captured-dark" aria-label="Pieces captured by you">
@@ -805,7 +1145,7 @@ export function ChessStudio() {
                 <div className="board-actions">
                   <span className="turn-status">
                     <span className={["status-pip", botThinking ? "thinking" : ""].join(" ")} />
-                    {gameStatus(game, whiteClock, blackClock, playerColor, selectedBot.name, manualResult)}
+                    {gameStatus(game, whiteClock, blackClock, playerColor, opponentName, manualResult)}
                   </span>
                   <div>
                     <button className="small-action" type="button" onClick={() => setFlipped(!flipped)}>
@@ -815,11 +1155,11 @@ export function ChessStudio() {
                       className="small-action"
                       type="button"
                       onClick={undoMove}
-                      disabled={!history.length || botThinking}
+                      disabled={!history.length || botThinking || playMode === "online"}
                     >
                       <Undo2 size={16} /> Undo turn
                     </button>
-                    <button className="small-action" type="button" onClick={() => resetBoard(false)}>
+                    <button className="small-action" type="button" onClick={() => resetBoard(false)} disabled={playMode === "online"}>
                       <RotateCcw size={16} /> Reset
                     </button>
                     <button className="small-action danger-action" type="button" onClick={resignGame} disabled={!clockStarted || gameEnded}>
@@ -830,8 +1170,8 @@ export function ChessStudio() {
               </div>
 
               <aside className="analysis-panel" aria-label="Game intelligence">
-                <div className="panel-tabs four-tabs" role="tablist" aria-label="Game panels">
-                  {(["bots", "analysis", "moves", "coach"] as const).map((tab) => (
+                <div className="panel-tabs five-tabs" role="tablist" aria-label="Game panels">
+                  {(["bots", "online", "analysis", "moves", "coach"] as const).map((tab) => (
                     <button
                       type="button"
                       role="tab"
@@ -841,6 +1181,7 @@ export function ChessStudio() {
                       key={tab}
                     >
                       {tab === "bots" && <Bot size={16} />}
+                      {tab === "online" && <Globe2 size={16} />}
                       {tab === "analysis" && <Activity size={16} />}
                       {tab === "moves" && <Layers3 size={16} />}
                       {tab === "coach" && <BrainCircuit size={16} />}
@@ -878,7 +1219,7 @@ export function ChessStudio() {
                     <div className="control-block">
                       <div className="control-heading">
                         <span>DIFFICULTY LEVEL</span>
-                        <b>{DIFFICULTIES[difficulty - 1].label} · {DIFFICULTIES[difficulty - 1].rating}</b>
+                        <b>{DIFFICULTIES[difficulty - 1].label} Â· {DIFFICULTIES[difficulty - 1].rating}</b>
                       </div>
                       <div className="difficulty-track">
                         {DIFFICULTIES.map((level) => (
@@ -899,7 +1240,7 @@ export function ChessStudio() {
                     <div className="control-block time-control-block">
                       <div className="control-heading">
                         <span>TIME CONTROL</span>
-                        <b>{activeTime.category} · {activeTime.label}</b>
+                        <b>{activeTime.category} Â· {activeTime.label}</b>
                       </div>
                       <div className="time-options expanded">
                         {TIME_CONTROLS.map((control) => (
@@ -943,7 +1284,7 @@ export function ChessStudio() {
                     <div className="game-setup-summary">
                       <span><Clock3 size={13} /> {activeTime.label}</span>
                       <span><Swords size={13} /> {DIFFICULTIES[difficulty - 1].label}</span>
-                      <span>{sideChoice === "random" ? "?" : sideChoice === "white" ? "♙" : "♟"} {sideChoice}</span>
+                      <span>{sideChoice === "random" ? "?" : sideChoice === "white" ? "â™™" : "â™Ÿ"} {sideChoice}</span>
                     </div>
                     <button className="start-bot-button" type="button" onClick={() => startBotGame()}>
                       <Swords size={17} /> Challenge {selectedBot.name} <ChevronRight size={16} />
@@ -951,23 +1292,102 @@ export function ChessStudio() {
                   </div>
                 )}
 
+                {panel === "online" && (
+                  <div className="panel-content online-panel">
+                    <div className="online-heading">
+                      <span className="engine-icon"><UsersRound size={20} /></span>
+                      <span>
+                        <b>Live multiplayer room</b>
+                        <small>Server clocks · legal move validation · reconnect</small>
+                      </span>
+                      <span className="ready-badge">{onlineRoom?.status?.toUpperCase() ?? "READY"}</span>
+                    </div>
+
+                    {!onlineRoom ? (
+                      <>
+                        <div className="online-create-card">
+                          <small>CREATE A PRIVATE ROOM</small>
+                          <h2>{activeTime.label} · {sideChoice}</h2>
+                          <p>Share the six-character code with your opponent. Guest games are casual; signed-in games can be rated.</p>
+                          <button
+                            className={ratedOnline && viewer ? "rated-toggle active" : "rated-toggle"}
+                            type="button"
+                            onClick={() => viewer && setRatedOnline(!ratedOnline)}
+                            disabled={!viewer}
+                          >
+                            <ShieldCheck size={15} />
+                            {viewer ? (ratedOnline ? "Rated game · Elo updates on" : "Casual game") : "Sign in to unlock rated games"}
+                          </button>
+                          <button className="start-bot-button" type="button" onClick={createOnlineGame} disabled={onlineBusy}>
+                            <Globe2 size={17} /> {onlineBusy ? "Creating…" : "Create room"}
+                          </button>
+                        </div>
+                        <div className="room-join">
+                          <label htmlFor="room-code">JOIN WITH CODE</label>
+                          <div>
+                            <input
+                              id="room-code"
+                              value={roomCodeInput}
+                              onChange={(event) => setRoomCodeInput(event.target.value.toUpperCase().slice(0, 6))}
+                              placeholder="ABC123"
+                              autoComplete="off"
+                            />
+                            <button type="button" onClick={joinOnlineGame} disabled={onlineBusy}>Join room</button>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="room-live-card">
+                        <small>ROOM CODE</small>
+                        <div className="room-code-line">
+                          <strong>{onlineRoom.code}</strong>
+                          <button type="button" onClick={() => copyGameText(onlineRoom.code, "Room code")} aria-label="Copy room code">
+                            <Clipboard size={15} />
+                          </button>
+                        </div>
+                        <div className="room-players">
+                          <span><i className="side-disc white" /><b>{onlineRoom.white?.name ?? "Waiting for White"}</b></span>
+                          <span><i className="side-disc black" /><b>{onlineRoom.black?.name ?? "Waiting for Black"}</b></span>
+                        </div>
+                        <div className="room-state">
+                          <span><small>FORMAT</small><b>{onlineRoom.ratingPool} · {activeTime.label}</b></span>
+                          <span><small>VERSION</small><b>{onlineRoom.version}</b></span>
+                          <span><small>RESULT</small><b>{onlineRoom.result}</b></span>
+                        </div>
+                        <p>
+                          {onlineRoom.status === "waiting"
+                            ? "Waiting for your opponent. Share the room code; the board starts automatically when they join."
+                            : onlineRoom.status === "active"
+                              ? (game.turn() === playerColor ? "Your move is live." : "Waiting for " + opponentName + "…")
+                              : "Game complete · " + (onlineRoom.termination?.replaceAll("-", " ") ?? "finished")}
+                        </p>
+                        <button className="outline-button" type="button" onClick={leaveOnlineGame}>Leave room</button>
+                      </div>
+                    )}
+                    {onlineError && <p className="online-error" role="alert">{onlineError}</p>}
+                  </div>
+                )}
                 {panel === "analysis" && (
                   <div className="panel-content">
                     <div className="engine-header">
                       <div>
                         <span className="engine-icon"><Bot size={20} /></span>
                         <span>
-                          <b>Live position lab</b>
+                          <b>Stockfish 18 analysis</b>
                           <small>{activeTime.category} · {activeTime.label} · playing {playerColor === "w" ? "White" : "Black"}</small>
                         </span>
                       </div>
-                      <span className="ready-badge">{botThinking ? "BOT THINKING" : "RULES VERIFIED"}</span>
+                      <span className="ready-badge">
+                        {stockfishStatus === "ready" ? `DEPTH ${stockfishAnalysis?.depth ?? 0}` : stockfishStatus === "error" ? "ENGINE ERROR" : "ANALYZING"}
+                      </span>
                     </div>
 
                     <div className="eval-card">
                       <div>
-                        <span>MATERIAL</span>
-                        <strong>{evaluation >= 0 ? "+" : ""}{evaluation.toFixed(1)}</strong>
+                        <span>WHITE EVALUATION</span>
+                        <strong>
+                          {bestEngineLine ? formatEngineScore(bestEngineLine, stockfishAnalysis?.fen ?? positionFen) : "…"}
+                        </strong>
                         <small>{openingName(history)}</small>
                       </div>
                       <Gauge size={43} strokeWidth={1.25} />
@@ -981,54 +1401,57 @@ export function ChessStudio() {
                         <b>{gameEnded ? "Complete" : game.isCheck() ? "Check" : "Legal"}</b>
                       </span>
                     </div>
-                    <div className="depth-switch" aria-label="Legal move count">
+                    <div className="depth-switch" aria-label="Stockfish search depth">
                       <button
                         type="button"
                         className={engineDepth === "quick" ? "active" : ""}
                         onClick={() => setEngineDepth("quick")}
                       >
-                        Show 3 moves
+                        Quick · depth 14
                       </button>
                       <button
                         type="button"
                         className={engineDepth === "deep" ? "active" : ""}
                         onClick={() => setEngineDepth("deep")}
                       >
-                        Show 8 moves
+                        Deep · depth 20
                       </button>
                     </div>
 
                     <div className="candidate-list">
                       <div className="candidate-heading">
-                        <span>Legal move explorer</span>
-                        <small>{legalMoves.length} legal moves</small>
+                        <span>Principal variations</span>
+                        <small>{legalMoves.length} legal moves · MultiPV 3</small>
                       </div>
-                      {candidates.length ? (
-                        candidates.map((move, index) => (
-                          <div className="candidate-row" key={move.san}>
-                            <span className="line-rank">{index + 1}</span>
-                            <b>{move.san}</b>
+                      {stockfishStatus === "error" ? (
+                        <p className="empty-copy">{stockfishError ?? "Stockfish could not start."}</p>
+                      ) : stockfishAnalysis?.lines.length ? (
+                        stockfishAnalysis.lines.map((line) => (
+                          <div className="candidate-row" key={line.multipv}>
+                            <span className="line-rank">{line.multipv}</span>
+                            <b>{line.san[0] ?? line.pv[0] ?? "—"}</b>
                             <span className="line-preview">
-                              {move.from} → {move.to}
+                              {line.san.slice(0, 7).join(" ")}
                             </span>
-                            <strong>{moveKind(move.san, move.captured)}</strong>
+                            <strong>{formatEngineScore(line, stockfishAnalysis.fen)}</strong>
                           </div>
                         ))
+                      ) : gameEnded ? (
+                        <p className="empty-copy">Final position reached. No legal continuation remains.</p>
                       ) : (
-                        <p className="empty-copy">Game complete. Reset to explore another line.</p>
+                        <p className="empty-copy">Stockfish is calculating the strongest continuations…</p>
                       )}
                     </div>
 
                     <div className="engine-note">
                       <ShieldCheck size={17} />
                       <p>
-                        <b>Every move stays legal.</b>
-                        Legal moves, exact draw reasons, promotion choices, and side-aware clocks are verified by the rules core.
+                        <b>Real engine, exact rules.</b>
+                        Stockfish 18 calculates locally in your browser; principal variations use legal SAN moves and scores are normalized for White.
                       </p>
                     </div>
                   </div>
                 )}
-
                 {panel === "moves" && (
                   <div className="panel-content move-panel">
                     <div className="move-panel-head">
@@ -1060,7 +1483,7 @@ export function ChessStudio() {
                           <div className="move-row" key={row.number}>
                             <span>{row.number}.</span>
                             <b>{row.white}</b>
-                            <b>{row.black ?? "…"}</b>
+                            <b>{row.black ?? "â€¦"}</b>
                           </div>
                         ))}
                       </div>
@@ -1097,20 +1520,19 @@ export function ChessStudio() {
 
                 <div className="match-console">
                   <div>
-                    <span className={queueOpen ? "queue-orb searching" : "queue-orb"}>
+                    <span className={onlineRoom?.status === "waiting" ? "queue-orb searching" : "queue-orb"}>
                       <UsersRound size={19} />
                     </span>
                     <span>
-                      <b>{queueOpen ? "Searching " + activeTime.category.toLowerCase() + " pool…" : "Want a human next?"}</b>
-                      <small>{queueOpen ? "±150 rating · " + activeTime.label : "Multiplayer room contract ready"}</small>
+                      <b>{onlineRoom ? "Room " + onlineRoom.code + " · " + onlineRoom.status : "Play a real opponent"}</b>
+                      <small>{onlineRoom ? "Version " + onlineRoom.version + " · server synchronized" : "Create or join a private live room"}</small>
                     </span>
                   </div>
-                  <button type="button" onClick={() => setQueueOpen(!queueOpen)}>
-                    {queueOpen ? "Cancel" : "Find player"}
-                    {!queueOpen && <ChevronRight size={16} />}
+                  <button type="button" onClick={() => setPanel("online")}>
+                    {onlineRoom ? "Open room" : "Multiplayer"}
+                    <ChevronRight size={16} />
                   </button>
-                </div>
-              </aside>
+                </div>              </aside>
             </div>
           </section>
 
@@ -1151,7 +1573,7 @@ export function ChessStudio() {
               <p className="eyebrow">FOUNDATION MAP</p>
               <h2 id="foundation-heading">More play today. A clear path to scale tomorrow.</h2>
               <p>
-                Training bots now run locally for instant play. Multiplayer and deep Stockfish analysis remain isolated behind production-ready contracts.
+                Training bots and Stockfish 18 analysis run locally for instant play. Server-validated multiplayer and durable ratings use the platform data layer.
               </p>
             </div>
 

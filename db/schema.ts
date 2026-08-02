@@ -151,3 +151,53 @@ export const analysisJobs = sqliteTable(
     index("analysis_jobs_status_idx").on(table.status, table.createdAt),
   ],
 );
+
+export const onlineRooms = sqliteTable(
+  "online_rooms",
+  {
+    id: text("id").primaryKey(),
+    code: text("code").notNull(),
+    whitePlayerId: text("white_player_id").references(() => users.id),
+    blackPlayerId: text("black_player_id").references(() => users.id),
+    status: text("status", { enum: ["waiting", "active", "finished", "aborted"] }).notNull().default("waiting"),
+    rated: integer("rated", { mode: "boolean" }).notNull().default(false),
+    ratingPool: text("rating_pool", { enum: ["bullet", "blitz", "rapid", "classical"] }).notNull(),
+    initialFen: text("initial_fen").notNull(),
+    currentFen: text("current_fen").notNull(),
+    pgn: text("pgn").notNull().default(""),
+    result: text("result", { enum: ["1-0", "0-1", "1/2-1/2", "*"] }).notNull().default("*"),
+    termination: text("termination"),
+    timeBaseMs: integer("time_base_ms").notNull(),
+    incrementMs: integer("increment_ms").notNull().default(0),
+    whiteClockMs: integer("white_clock_ms").notNull(),
+    blackClockMs: integer("black_clock_ms").notNull(),
+    lastMoveAt: integer("last_move_at", { mode: "timestamp_ms" }),
+    version: integer("version").notNull().default(1),
+    startedAt: integer("started_at", { mode: "timestamp_ms" }),
+    endedAt: integer("ended_at", { mode: "timestamp_ms" }),
+    ratingsApplied: integer("ratings_applied", { mode: "boolean" }).notNull().default(false),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("online_rooms_code_uq").on(table.code),
+    index("online_rooms_status_idx").on(table.status, table.createdAt),
+  ],
+);
+
+export const onlineMoves = sqliteTable(
+  "online_moves",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    roomId: text("room_id").notNull().references(() => onlineRooms.id, { onDelete: "cascade" }),
+    ply: integer("ply").notNull(),
+    san: text("san").notNull(),
+    uci: text("uci").notNull(),
+    fenAfter: text("fen_after").notNull(),
+    clockMs: integer("clock_ms").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex("online_moves_room_ply_uq").on(table.roomId, table.ply),
+    index("online_moves_room_idx").on(table.roomId, table.ply),
+  ],
+);

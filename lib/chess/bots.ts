@@ -114,10 +114,10 @@ export const BOARD_THEMES = [
 ] as const;
 
 export const PIECE_SETS = [
-  { id: "classic", name: "Classic", preview: "♞♛" },
-  { id: "bold", name: "Bold", preview: "♟♛" },
+  { id: "classic", name: "Classic", preview: "â™žâ™›" },
+  { id: "bold", name: "Bold", preview: "â™Ÿâ™›" },
   { id: "letters", name: "Monogram", preview: "NQ" },
-  { id: "glass", name: "Glass", preview: "♞♛" },
+  { id: "glass", name: "Glass", preview: "â™žâ™›" },
 ] as const;
 
 export const TIME_CONTROLS = [
@@ -125,7 +125,7 @@ export const TIME_CONTROLS = [
   { id: "bullet_1_1", label: "1 + 1", category: "Bullet", base: 60, increment: 1 },
   { id: "blitz_3_0", label: "3 + 0", category: "Blitz", base: 180, increment: 0 },
   { id: "blitz_3_2", label: "3 + 2", category: "Blitz", base: 180, increment: 2 },
-  { id: "rapid_5_0", label: "5 + 0", category: "Rapid", base: 300, increment: 0 },
+  { id: "rapid_5_0", label: "5 + 0", category: "Blitz", base: 300, increment: 0 },
   { id: "rapid_10_0", label: "10 + 0", category: "Rapid", base: 600, increment: 0 },
   { id: "rapid_10_5", label: "10 + 5", category: "Rapid", base: 600, increment: 5 },
   { id: "classical_15_10", label: "15 + 10", category: "Classical", base: 900, increment: 10 },
