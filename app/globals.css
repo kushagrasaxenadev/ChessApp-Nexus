@@ -1840,8 +1840,7 @@ input[type="range"] {
   position: relative;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--lime) 72%, white);
-  background:
-    linear-gradient(145deg, color-mix(in srgb, var(--lime) 88%, white), var(--lime));
+  background: #0b0e0b;
   box-shadow:
     0 0 0 4px color-mix(in srgb, var(--lime) 8%, transparent),
     0 10px 34px color-mix(in srgb, var(--lime) 22%, transparent);
@@ -1849,29 +1848,13 @@ input[type="range"] {
 }
 
 .brand-mark::before {
-  position: absolute;
-  inset: 2px;
-  border: 1px solid rgba(17, 21, 11, 0.16);
-  border-radius: 12px;
-  content: "";
+  content: none;
 }
 
-.brand-mark > span {
-  position: relative;
-  z-index: 1;
-  font: 950 24px/1 var(--font-geist-sans);
-  letter-spacing: -0.08em;
-}
-
-.brand-mark > svg {
-  position: absolute;
-  right: 3px;
-  bottom: 3px;
-  z-index: 2;
-  padding: 2px;
-  border-radius: 50%;
-  background: #11150b;
-  color: var(--lime);
+.brand-mark-image {
+  width: 100%;
+  height: 100%;
+  background: url("/brand/nexus-mark.svg") center / cover no-repeat;
 }
 
 .wordmark {
@@ -1886,7 +1869,9 @@ input[type="range"] {
   place-items: center;
   border: 1px solid color-mix(in srgb, var(--lime) 48%, var(--line));
   border-radius: 10px;
-  background: linear-gradient(145deg, var(--lime-soft), rgba(255, 255, 255, 0.02));
+  background:
+    url("/brand/nexus-mark.svg") center / 27px 27px no-repeat,
+    linear-gradient(145deg, var(--lime-soft), rgba(255, 255, 255, 0.02));
   color: var(--lime);
   font-size: initial;
   letter-spacing: initial;

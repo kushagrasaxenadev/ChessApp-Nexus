@@ -1,0 +1,38 @@
+name: Feature request
+description: Propose a focused product improvement
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Player problem
+      description: Explain the player need before proposing implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Describe a testable successful result.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Product area
+      options:
+        - Play and rules
+        - Bots and training
+        - Analysis and coaching
+        - Multiplayer and ratings
+        - Community and events
+        - Accessibility and mobile
+        - Platform and operations
+    validations:
+      required: true
+  - type: textarea
+    id: considerations
+    attributes:
+      label: Correctness, abuse, and accessibility considerations
+      description: Note effects on chess truth, competitive integrity, privacy, touch, keyboard, or assistive technology.

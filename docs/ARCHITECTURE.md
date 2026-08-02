@@ -1,83 +1,99 @@
-# NEXUS Chess — platform foundation
+# NEXUS Chess architecture
 
-This repository is the first production-shaped slice of a Chess.com-style platform. It establishes the boundaries before filling in every feature.
+NEXUS v1.0 is a full-stack edge application with three deliberate execution boundaries: deterministic chess state, local engine computation, and authoritative online persistence. This keeps board interaction fast while protecting competitive results.
 
-## Recommended stack
-
-| Layer | Choice now | Scale path |
-| --- | --- | --- |
-| Web product | Next.js 16, React 19, TypeScript, Tailwind/CSS, Lucide | Keep the UI edge-renderable and progressively stream heavier panels |
-| Chess rules | `chess.js` behind product-owned game contracts | Add variant-specific rule adapters only when a variant ships |
-| Live games | One authoritative room per game; WebSocket event contracts in this repo | Cloudflare Durable Objects with hibernating WebSockets |
-| Durable data | Cloudflare D1 + Drizzle migrations | Enable D1 read replication; move high-volume analytics to ClickHouse/BigQuery later |
-| Engine | Stockfish WebAssembly in a Web Worker for instant local analysis | A containerized Stockfish pool for deep review, queues, and anti-cheat isolation |
-| AI coach | Model router behind `ChessCoach`; engine facts are always supplied to the model | Fast model for inline hints, deeper model for game review, fallback with circuit breakers |
-| Files | None yet | R2 for avatars, imported PGNs, exports, and generated share cards |
-| Quality | TypeScript, ESLint, Node tests, contract validation with Zod | Playwright journeys, load tests, clock-drift simulation, and engine golden tests |
-
-The choices follow the official guidance for [Durable Object WebSocket hibernation](https://developers.cloudflare.com/durable-objects/best-practices/websockets/), [D1 read replication](https://developers.cloudflare.com/d1/best-practices/read-replication/), [chess.js move validation](https://jhlywa.github.io/chess.js/), [Stockfish WebAssembly](https://github.com/lichess-org/lila-stockfish-web), and the [OpenAI Responses API](https://platform.openai.com/docs/quickstart/make-your-first-api-request).
-
-## Runtime shape
+## Runtime map
 
 ```mermaid
 flowchart LR
-  P["Player browser"] --> W["NEXUS web edge"]
-  P <-->|"WebSocket"| R["Authoritative game room"]
-  R --> D["D1 games, moves, ratings"]
-  W --> D
-  P --> L["Local Stockfish worker"]
-  W --> Q["Analysis queue"]
-  Q --> E["Deep Stockfish pool"]
-  E --> D
-  W --> C["AI coach model router"]
-  C --> D
+  UI["React arena"] --> RULES["chess.js rules core"]
+  UI --> SF["Stockfish 18 Web Worker"]
+  UI --> API["Next API routes on Cloudflare Workers"]
+  API --> AUTH["Sign in with ChatGPT identity headers"]
+  API --> ONLINE["Multiplayer room service"]
+  ONLINE --> RULES
+  ONLINE --> D1["Cloudflare D1 via Drizzle"]
+  API --> D1
+  D1 --> RATINGS["Rating pools and game history"]
+  SF --> UI
 ```
 
-## Non-negotiable game rules
+## Module boundaries
 
-1. The server owns the clock, legal move validation, result, and monotonically increasing game version.
-2. A client move includes the version it was based on; stale events are rejected and the authoritative state is replayed.
-3. Every accepted move is appended with SAN, UCI, resulting FEN, and remaining clock time.
-4. Ratings update once, transactionally, from the final result. Retries use idempotency keys.
-5. AI prose never decides chess truth. Stockfish/rules output is structured first, then the coach explains it.
-6. Deep analysis and anti-cheat workloads are isolated from live gameplay.
+| Surface | Responsibility |
+| --- | --- |
+| `components/chess-studio.tsx` | Player interaction, clocks, panels, board presentation, room controls, and engine configuration |
+| `lib/chess/bots.ts` | Bot identities, calibrated difficulty bands, themes, time controls, and training move selection |
+| `lib/chess/engine.ts` | Product-owned engine and coaching interfaces |
+| `lib/chess/stockfish-client.ts` | Worker lifecycle, UCI commands, options, analysis parsing, and cancellation |
+| `lib/chess/contracts.ts` | Validated realtime and domain message contracts |
+| `lib/server/online.ts` | Room creation/join, version checks, legal moves, clocks, results, persistence, and ratings |
+| `app/api/**` | HTTP boundary for profile, leaderboard, health, room, and move operations |
+| `db/schema.ts` | Users, ratings, games, moves, rooms, matchmaking, and analysis job records |
+| `drizzle/**` | Reviewed and reproducible D1 schema migrations |
+| `scripts/prepare-stockfish.mjs` | Copies version-pinned Stockfish browser assets into ignored build input |
 
-## Data already modeled
+## Chess correctness
 
-- Users and per-time-control rating pools
-- Games, clocks, results, and optimistic versions
-- Append-only move history
-- Matchmaking tickets
-- Asynchronous analysis jobs
+Standard chess legality is delegated to `chess.js`; NEXUS owns product flow around it.
 
-The first migration is generated in `drizzle/`. D1 is declared as the logical `DB` binding in `.openai/hosting.json`.
+- Every move is applied to a known FEN and recorded with SAN, UCI, resulting FEN, and clock state.
+- Promotion requires an explicit queen, rook, bishop, or knight choice.
+- Checkmate, stalemate, threefold repetition, fifty-move rule, and insufficient material are distinguished.
+- Castling and en passant are legal only when accepted by the rules core.
+- AI text is never allowed to decide legal moves, evaluation, clocks, or results.
 
-## Delivery sequence
+## Bot and engine model
 
-### Milestone 1 — foundation (this version)
+Difficulty bands use two strategies:
 
-- Product shell and responsive live-board workspace
-- Fully legal local move interaction powered by `chess.js`
-- Server data schema, engine/coach interfaces, realtime event contracts, health route
+1. Rookie and Casual use controlled training behavior with intentional variance.
+2. Club, Expert, and Master request Stockfish 18 moves with depth and Elo limits.
 
-### Milestone 2 — real multiplayer
+Bot profile offsets produce distinct opponents inside a band without changing the meaning of that band. If the Stockfish worker is unavailable, the UI reports the fallback rather than silently claiming engine strength.
 
-- Sign-in, profiles, lobby, quick pairing, private challenges
-- Durable Object game rooms, reconnect/replay, draw/resign/abort flows
-- Server-authoritative clocks and Glicko-2 rating updates
+The analysis panel owns a separate UCI session configuration with depth, MultiPV, hash, skill, Elo, and full-strength controls. Analysis runs in a Web Worker so search does not block board interaction.
 
-### Milestone 3 — engine and review
+## Multiplayer authority
 
-- Stockfish Web Worker with UCI parsing and MultiPV
-- Deep analysis queue, per-move classifications, opening explorer
-- Configurable AI coach with streaming explanations and cost controls
+The server validates online moves even if the client has already highlighted them as legal.
 
-### Milestone 4 — platform depth
+1. A client sends its room code, move, and last-known room version.
+2. The server reloads authoritative state and rejects stale versions.
+3. Elapsed time is charged from server timestamps.
+4. `chess.js` validates and applies the move.
+5. Room state and append-only move data are persisted.
+6. Terminal results and rating updates are applied once with an idempotent guard.
+7. The client receives the new authoritative version and clock snapshot.
 
-- Friends, chat, clubs, tournaments, leaderboards, lessons, puzzles
-- Moderation, reports, abuse controls, observability, anti-cheat review tooling
-- Mobile/PWA performance and accessibility hardening
+The current HTTP room flow is reconnectable and persistent. Durable Object WebSockets are the planned scale boundary for lower latency and high concurrency; they should preserve these contracts rather than duplicate game rules.
 
-## Suggested repository evolution
+## Identity and ratings
 
-Keep this web surface as `apps/web`. Add `apps/realtime` only when Durable Object deployment starts, `apps/engine` for the containerized UCI worker, and shared packages for contracts, chess domain logic, and UI. Do not start with many independently deployed services; split only the two workloads that have genuinely different scaling profiles: realtime rooms and CPU-heavy engine analysis.
+The hosting layer supplies trusted Sign in with ChatGPT identity headers. Server helpers normalize them into product user records. Anonymous visitors receive device-local guest identity for unrated room play; authenticated users can access durable rating pools and history.
+
+Ratings are separated by Bullet, Blitz, Rapid, and Classical pools. A finished rated room can apply a result only once.
+
+## Data ownership
+
+- D1 is the source of truth for accounts, ratings, games, rooms, moves, and analysis job metadata.
+- Browser storage is limited to device-local preferences and guest presentation.
+- Secrets remain server-only and are managed by the hosting environment.
+- Generated Stockfish binaries and build output are intentionally ignored; their source package and preparation script are versioned.
+
+## Deployment shape
+
+vinext compiles the Next application into a Cloudflare Worker-compatible ESM bundle. The Sites project binds D1 at deployment time and publishes the exact Git commit represented by a saved version. The repository keeps hosting metadata logical and contains no platform credential.
+
+## Scaling decisions
+
+Keep the product in one deployable application until a workload has a different operational profile.
+
+- Split **realtime rooms** when concurrent connections require Durable Object placement and hibernation.
+- Split **deep analysis** when CPU queues, quotas, or anti-cheat isolation require containerized Stockfish workers.
+- Keep shared rules, event contracts, and rating logic in versioned packages before either split.
+- Add analytics storage only when product queries exceed D1's operational role.
+
+## Quality gates
+
+`npm run check` is the release gate: lint, strict TypeScript, production build, and rendered product/health tests. Pull requests also require UI evidence for visible changes and migrations for schema changes. Future multiplayer releases add clock-drift, stale-version, concurrency, reconnect, and duplicate-rating test matrices.

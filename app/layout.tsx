@@ -23,7 +23,7 @@ export async function generateMetadata(): Promise<Metadata> {
     requestHeaders.get("x-forwarded-proto") ??
     (host.startsWith("localhost") ? "http" : "https");
   const origin = new URL(protocol + "://" + host);
-  const socialImage = new URL("/og-engine-lab.png", origin).toString();
+  const socialImage = new URL("/brand/nexus-social-card.png", origin).toString();
   const title = "NEXUS — Play. Think. Evolve.";
   const description =
     "A premium online chess platform for live play, seven ranked bots, configurable Stockfish analysis, and AI coaching.";
@@ -36,6 +36,22 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     description,
     applicationName: "NEXUS Chess",
+    creator: "NEXUS Chess",
+    publisher: "NEXUS Chess",
+    category: "games",
+    keywords: [
+      "chess",
+      "online chess",
+      "Stockfish",
+      "chess analysis",
+      "chess bots",
+      "multiplayer chess",
+    ],
+    manifest: "/manifest.webmanifest",
+    icons: {
+      icon: [{ url: "/brand/nexus-mark.svg", type: "image/svg+xml" }],
+      shortcut: "/brand/nexus-mark.svg",
+    },
     openGraph: {
       title,
       description,

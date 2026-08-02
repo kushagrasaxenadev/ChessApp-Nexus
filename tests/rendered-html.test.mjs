@@ -4,30 +4,13 @@ import test from "node:test";
 
 const templateRoot = new URL("../", import.meta.url);
 const previewRoot = new URL("../app/_sites-preview/", import.meta.url);
-const integrationTest = process.env.NEXUS_TEST_URL ? test : test.skip;
+const integrationTest = test;
 
 async function render(pathname = "/") {
-  if (process.env.NEXUS_TEST_URL) {
-    return fetch(new URL(pathname, process.env.NEXUS_TEST_URL));
+  if (!process.env.NEXUS_TEST_URL) {
+    throw new Error("Run rendered integration tests through npm run test:render");
   }
-  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set("test", String(process.pid) + "-" + String(Date.now()));
-  const { default: worker } = await import(workerUrl.href);
-
-  return worker.fetch(
-    new Request("http://localhost" + pathname, {
-      headers: { accept: "text/html" },
-    }),
-    {
-      ASSETS: {
-        fetch: async () => new Response("Not found", { status: 404 }),
-      },
-    },
-    {
-      waitUntil() {},
-      passThroughOnException() {},
-    },
-  );
+  return fetch(new URL(pathname, process.env.NEXUS_TEST_URL));
 }
 
 integrationTest("server-renders the NEXUS product foundation", async () => {
@@ -38,7 +21,7 @@ integrationTest("server-renders the NEXUS product foundation", async () => {
   const html = await response.text();
   assert.match(html, /<title>NEXUS \u2014 Play\. Think\. Evolve\.<\/title>/i);
   assert.match(html, /BOT ARENA/i);
-  assert.match(html, /Five minds\. Five different problems\./i);
+  assert.match(html, /Seven minds\. Seven different problems\./i);
   assert.match(html, /Difficulty level/i);
   assert.match(html, /Board palette/i);
   assert.match(html, /Piece set/i);

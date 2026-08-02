@@ -1,98 +1,170 @@
-# vinext-starter
+<p align="center">
+  <img src="./public/brand/nexus-mark.svg" width="96" alt="NEXUS Chess logo" />
+</p>
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+<h1 align="center">NEXUS Chess</h1>
 
-## Prerequisites
+<p align="center">
+  <strong>Play. Think. Evolve.</strong><br />
+  A polished full-stack chess platform with ranked bots, real multiplayer rooms, accurate rules, clocks, ratings, and a configurable Stockfish 18 analysis lab.
+</p>
+
+<p align="center">
+  <a href="https://nexus-chess-lab.novacreationsx.chatgpt.site/">Live product</a>
+  ·
+  <a href="./docs/ARCHITECTURE.md">Architecture</a>
+  ·
+  <a href="./docs/ROADMAP.md">Roadmap</a>
+  ·
+  <a href="./CONTRIBUTING.md">Contributing</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/kushagrasaxenadev/ChessApp-Nexus/actions/workflows/ci.yml"><img src="https://github.com/kushagrasaxenadev/ChessApp-Nexus/actions/workflows/ci.yml/badge.svg" alt="CI status" /></a>
+  <img src="https://img.shields.io/badge/release-1.0.0-c7f64b?labelColor=0b0e0b" alt="Release 1.0.0" />
+  <img src="https://img.shields.io/badge/Stockfish-18-72d8ff?labelColor=0b0e0b" alt="Stockfish 18" />
+  <img src="https://img.shields.io/badge/TypeScript-strict-3178c6?labelColor=0b0e0b" alt="TypeScript strict" />
+</p>
+
+![NEXUS Chess product preview](./public/brand/nexus-social-card.png)
+
+## Product overview
+
+NEXUS is designed as a serious chess product rather than a board demo. The current release combines legal over-the-board interaction, calibrated computer opponents, configurable engine analysis, authenticated profiles, durable rating data, and server-validated multiplayer rooms in one responsive interface.
+
+### What is working
+
+| Area | Included in v1.0 |
+| --- | --- |
+| Chess rules | Legal move highlighting, checks, checkmate, stalemate, repetition, fifty-move rule, insufficient material, castling, en passant, and promotion choice |
+| Bot Arena | Seven distinct bot personalities across five difficulty bands, with Stockfish-limited Club, Expert, and Master play |
+| Time controls | Bullet, Blitz, Rapid, and Classical presets from `1+0` through `15+10`, including increment and flag handling |
+| Engine Lab | Stockfish 18 Web Worker, depth 8–24, MultiPV 1–5, hash control, skill/Elo/full-strength modes, principal variations, nodes, NPS, and FEN/line copy tools |
+| Multiplayer | Private room creation/joining, server-side legal move validation, authoritative clocks, reconnectable state, PGN/FEN persistence, results, and rating updates |
+| Accounts | Sign in with ChatGPT identity, player profile, rating pools, game history, and leaderboard APIs |
+| Personalization | Five interface themes, six board palettes, four piece sets, side selection, responsive layout, keyboard focus, and touch feedback |
+| Product shell | Branded installable web-app metadata, social sharing card, health endpoint, responsive arena, and accessible selection states |
+
+## Brand showcase
+
+![Cinematic NEXUS chess arena](./public/brand/nexus-arena-showcase.png)
+
+The NEXUS identity uses a crowned `N` mark, graphite surfaces, warm ivory pieces, and an electric-lime analysis signal. Reusable files and usage guidance live in [`public/brand`](./public/brand) and [`docs/BRAND.md`](./docs/BRAND.md).
+
+## Technology
+
+- **Application:** Next.js 16, React 19, TypeScript, vinext, Cloudflare Workers
+- **Chess domain:** `chess.js` for rules and legal state transitions
+- **Engine:** Stockfish 18 WebAssembly running inside a browser Web Worker
+- **Data:** Cloudflare D1 with Drizzle ORM and checked-in migrations
+- **Validation:** Zod contracts, ESLint, strict TypeScript, Node test runner
+- **Identity:** Sign in with ChatGPT headers supplied by the hosting platform
+- **UI:** Product-owned responsive CSS, Lucide icons, Geist typography
+
+## Quick start
+
+### Requirements
 
 - Node.js `>=22.13.0`
+- npm
 
-## Quick Start
+### Install and run
 
 ```bash
-npm install
+npm ci
 npm run dev
+```
+
+Open the local URL printed by the development server. The Stockfish browser assets are prepared automatically before development and production builds.
+
+### Verify a change
+
+```bash
+npm run check
+```
+
+This runs linting, strict type checking, the production build, and rendered-output tests. Individual commands are also available:
+
+```bash
+npm run lint
+npm run typecheck
 npm run build
+npm run test:render
 ```
 
-This starter does not use `wrangler.jsonc`.
+## Environment and data
 
-## Included Shape
+Copy `.env.example` only when enabling optional server-side model or service integrations. Do not commit real secrets.
 
-- edit site code under `app/`
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
-
-## Workspace Auth Headers
-
-OpenAI workspace sites can read the current user's email from
-`oai-authenticated-user-email`.
-
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
+```bash
+Copy-Item .env.example .env.local
 ```
 
-## Optional Dispatch-Owned ChatGPT Sign-In
+The hosted app declares its logical D1 binding in `.openai/hosting.json`. Database changes belong in `db/schema.ts`; create a reviewed migration with:
 
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
+```bash
+npm run db:generate
+```
 
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
-  browser links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
+## Repository map
 
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
+```text
+.
+├── app/                     Next routes, metadata, manifest, API handlers, styles
+├── components/              Interactive NEXUS chess product surface
+├── lib/chess/               Bot, rule, engine, Stockfish, and shared contracts
+├── lib/server/              Multiplayer room and rating orchestration
+├── db/                      Drizzle schema and database access
+├── drizzle/                 Versioned D1 migrations
+├── public/brand/            Product mark, social card, and showcase artwork
+├── scripts/                 Repeatable build-time asset preparation
+├── tests/                   Rendered product and health-contract tests
+├── docs/                    Architecture, brand system, and product roadmap
+├── worker/                  Cloudflare worker entrypoint
+└── .github/                 CI, ownership, issue, and pull-request workflows
+```
 
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
+The current single-application layout is intentional. Realtime rooms and CPU-heavy engine services should split into dedicated deployables only when scale requires them; see the [architecture notes](./docs/ARCHITECTURE.md).
 
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
+## API surface
 
-## Useful Commands
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/health` | Machine-readable product capability status |
+| `GET /api/me` | Authenticated profile, ratings, and recent games |
+| `GET /api/leaderboard` | Rating-pool leaderboard |
+| `POST /api/multiplayer/rooms` | Create a server-validated room |
+| `GET /api/multiplayer/rooms/:code` | Read or join a room |
+| `POST /api/multiplayer/rooms/:code/move` | Submit a versioned legal move |
 
-- `npm run dev`: start local development
-- `npm run build`: verify the vinext build output
-- `npm test`: build the starter and verify its rendered loading skeleton
-- `npm run db:generate`: generate Drizzle migrations after schema changes
+## Product principles
 
-## Learn More
+1. **Chess truth is deterministic.** Rules and engine output are structured before any coaching explanation is generated.
+2. **The server owns competitive state.** Online clocks, accepted moves, results, versions, and rating updates are authoritative.
+3. **Difficulty should be honest.** Bot labels map to controlled behavior or Stockfish Elo limits rather than arbitrary delays alone.
+4. **Fast paths stay local.** Legal interaction and browser Stockfish remain responsive without a server round trip.
+5. **Every release is reproducible.** Brand assets, migrations, tests, CI, and documentation are versioned with the source.
 
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+## Roadmap
+
+The next major endeavors are summarized below; acceptance criteria and sequencing are maintained in [`docs/ROADMAP.md`](./docs/ROADMAP.md).
+
+- Durable Object WebSocket rooms, quick pairing, spectators, and tournament-ready clocks
+- Full post-game review with move classifications, accuracy, opening explorer, and shareable reports
+- Production AI coach integration grounded exclusively in structured engine evidence
+- Puzzles, lessons, clubs, friends, moderation, anti-cheat review, and notification systems
+- PWA/offline hardening, mobile packaging, observability, load testing, and accessibility audits
+
+## Git workflow
+
+- Create focused branches from `main` using `codex/<topic>` or `feature/<topic>`.
+- Keep commits small, descriptive, and independently buildable.
+- Run `npm run check` before opening a pull request.
+- Include screenshots for UI changes and migrations for schema changes.
+- Never commit `.env` files, credentials, generated Stockfish binaries, build output, or local worker state.
+
+See [`CONTRIBUTING.md`](./CONTRIBUTING.md), [`SECURITY.md`](./SECURITY.md), and the repository pull-request template for the complete release checklist.
+
+## Ownership and license
+
+Maintained by [@kushagrasaxenadev](https://github.com/kushagrasaxenadev). No open-source license has been granted yet; all rights are reserved unless a license is added to the repository.

@@ -1,0 +1,46 @@
+name: Bug report
+description: Report a reproducible NEXUS product defect
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Please do not disclose security vulnerabilities here; use GitHub's private vulnerability reporting flow.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the observed and expected behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: Include position FEN/PGN, time control, mode, and exact steps when relevant.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Product area
+      options:
+        - Board and rules
+        - Bots
+        - Stockfish analysis
+        - Multiplayer and clocks
+        - Accounts and ratings
+        - Themes and responsive UI
+        - Build or deployment
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Browser and device
+      placeholder: Chrome 140, Windows 11, desktop
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs or screenshots
+      description: Remove credentials and personal data before attaching evidence.

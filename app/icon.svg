@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title description">
+  <title id="title">NEXUS Chess</title>
+  <desc id="description">A dark rounded square with a lime N monogram and crown.</desc>
+  <rect width="512" height="512" rx="112" fill="#0b0e0b"/>
+  <rect x="18" y="18" width="476" height="476" rx="96" fill="none" stroke="#c7f64b" stroke-width="12"/>
+  <path d="M139 367V154h48l138 142V154h49v213h-47L188 225v142z" fill="#c7f64b"/>
+  <path d="M321 115l24-45 29 33 37-25-10 69h-97l-10-69 37 25z" fill="#c7f64b"/>
+  <path d="M307 157h91" fill="none" stroke="#c7f64b" stroke-linecap="round" stroke-width="13"/>
+</svg>

@@ -945,8 +945,7 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
     <div className="app-shell" data-theme={theme} data-board={boardTheme} data-pieces={pieceSet}>
       <aside className="side-rail" aria-label="Primary navigation">
         <a className="brand-mark" href="#" aria-label="NEXUS home">
-          <span>N</span>
-          <Crown size={15} strokeWidth={2.6} />
+          <span className="brand-mark-image" aria-hidden="true" />
         </a>
 
         <nav className="rail-nav">
@@ -982,7 +981,7 @@ export function ChessStudio({ viewer }: { viewer: Viewer | null }) {
       <div className="app-main">
         <header className="topbar">
           <div className="wordmark" aria-label="NEXUS Chess Lab">
-            <span className="wordmark-emblem"><Crown size={18} strokeWidth={2.5} /></span>
+            <span className="wordmark-emblem" aria-hidden="true" />
             <span className="wordmark-copy">
               <b>NEXUS</b>
               <small>CHESS LAB</small>
